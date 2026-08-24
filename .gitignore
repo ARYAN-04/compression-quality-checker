@@ -1,0 +1,23 @@
+# Local agent/workspace docs — not for distribution
+AGENTS.md
+plan.html
+
+# Generated benchmark artifacts
+results/
+suites/
+
+# Research documents (never commit)
+*.docx
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/vendor/
+
+# macOS
+.DS_Store
