@@ -144,7 +144,7 @@ func mergeTemplate(stubs []domain.Task, annotated []domain.Task, tools []domain.
 	}
 	var missing []string
 	for _, task := range annotated {
-		if !exposed[task.Expected.ToolName] {
+		if !allHopsExposed(task, exposed) {
 			missing = append(missing, task.ID)
 			continue
 		}
@@ -165,6 +165,21 @@ func mergeTemplate(stubs []domain.Task, annotated []domain.Task, tools []domain.
 		out = append(out, byTool[name])
 	}
 	return out
+}
+
+// allHopsExposed reports whether every tool a task touches (its first
+// hop plus each multi-hop step) is present in the live catalogue, so a
+// chained template is never merged onto a partially exposed server.
+func allHopsExposed(task domain.Task, exposed map[string]bool) bool {
+	if !exposed[task.Expected.ToolName] {
+		return false
+	}
+	for _, hop := range task.MultiHop {
+		if !exposed[hop.ToolName] {
+			return false
+		}
+	}
+	return true
 }
 
 // sanitizeName reduces a command or tool name to a filename-safe token.

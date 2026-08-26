@@ -6,12 +6,13 @@ import (
 
 // TemplateNames lists the pre-annotated standard MCP servers.
 func TemplateNames() []string {
-	return []string{"github", "sqlite", "filesystem"}
+	return []string{"github", "sqlite", "filesystem", "jira", "slack"}
 }
 
 // Template returns pre-annotated benchmark tasks for a standard MCP
-// server ("github", "sqlite", "filesystem"). Ground truth matches the
-// upstream @modelcontextprotocol server tool names and input schemas.
+// server ("github", "sqlite", "filesystem", "jira", "slack"). Ground
+// truth matches the upstream @modelcontextprotocol server tool names
+// and input schemas.
 func Template(name string) ([]domain.Task, bool) {
 	switch name {
 	case "github":
@@ -20,6 +21,10 @@ func Template(name string) ([]domain.Task, bool) {
 		return sqliteTasks(), true
 	case "filesystem":
 		return filesystemTasks(), true
+	case "jira":
+		return jiraTasks(), true
+	case "slack":
+		return slackTasks(), true
 	default:
 		return nil, false
 	}
@@ -41,6 +46,32 @@ func githubTasks() []domain.Task {
 		"owner": obj("string", "Repository owner login."),
 		"repo":  obj("string", "Repository name."),
 		"state": obj("string", "Filter by issue state: open, closed, or all."),
+	})
+	createIssue := tool("create_issue", "Create a new issue in a GitHub repository.")
+	createIssue.Parameters = params(map[string]any{
+		"owner": obj("string", "Repository owner login."),
+		"repo":  obj("string", "Repository name."),
+		"title": obj("string", "Title of the new issue."),
+		"body":  obj("string", "Body text of the new issue."),
+	})
+	getPullRequest := tool("get_pull_request", "Get details of a specific pull request in a GitHub repository.")
+	getPullRequest.Parameters = params(map[string]any{
+		"owner":       obj("string", "Repository owner login."),
+		"repo":        obj("string", "Repository name."),
+		"pull_number": obj("integer", "Pull request number to fetch."),
+	})
+	listCommits := tool("list_commits", "List commits in a GitHub repository.")
+	listCommits.Parameters = params(map[string]any{
+		"owner": obj("string", "Repository owner login."),
+		"repo":  obj("string", "Repository name."),
+		"sha":   obj("string", "Optional branch or commit SHA to start listing from."),
+	})
+	createPRComment := tool("create_pull_request_comment", "Post a comment on a GitHub pull request.")
+	createPRComment.Parameters = params(map[string]any{
+		"owner":       obj("string", "Repository owner login."),
+		"repo":        obj("string", "Repository name."),
+		"pull_number": obj("integer", "Pull request number to comment on."),
+		"body":        obj("string", "Comment text to post."),
 	})
 	return []domain.Task{
 		{
@@ -68,6 +99,43 @@ func githubTasks() []domain.Task {
 			Tools:    []domain.ToolDefinition{listIssues, getIssue},
 			Expected: expected("list_issues", map[string]any{"owner": "acme", "repo": "api-gateway"}),
 		},
+		{
+			ID:       "gh_create_issue_001",
+			Category: domain.CategoryImported,
+			Prompt:   "Call create_issue exactly once. Arguments: owner: acme, repo: api-gateway, title: Add rate limiting, body: Implement token bucket rate limiting for the gateway.",
+			Tools:    []domain.ToolDefinition{createIssue, createPRComment, getIssue},
+			Expected: expected("create_issue", map[string]any{
+				"owner": "acme", "repo": "api-gateway",
+				"title": "Add rate limiting",
+				"body":  "Implement token bucket rate limiting for the gateway",
+			}),
+		},
+		{
+			ID:       "gh_get_pull_request_001",
+			Category: domain.CategoryImported,
+			Prompt:   "Call get_pull_request exactly once. Arguments: owner: acme, repo: api-gateway, pull_number: 87.",
+			Tools:    []domain.ToolDefinition{getPullRequest, getIssue},
+			Expected: expected("get_pull_request", map[string]any{
+				"owner": "acme", "repo": "api-gateway", "pull_number": int64(87),
+			}),
+		},
+		{
+			ID:       "gh_list_commits_001",
+			Category: domain.CategoryImported,
+			Prompt:   "Call list_commits exactly once. Arguments: owner: acme, repo: api-gateway. Pass no optional parameters.",
+			Tools:    []domain.ToolDefinition{listCommits, getPullRequest},
+			Expected: expected("list_commits", map[string]any{"owner": "acme", "repo": "api-gateway"}),
+		},
+		{
+			ID:       "gh_create_pr_comment_001",
+			Category: domain.CategoryImported,
+			Prompt:   "Call create_pull_request_comment exactly once. Arguments: owner: acme, repo: api-gateway, pull_number: 87, body: LGTM once CI passes.",
+			Tools:    []domain.ToolDefinition{createPRComment, createIssue, getPullRequest},
+			Expected: expected("create_pull_request_comment", map[string]any{
+				"owner": "acme", "repo": "api-gateway", "pull_number": int64(87),
+				"body": "LGTM once CI passes",
+			}),
+		},
 	}
 }
 
@@ -81,6 +149,10 @@ func sqliteTasks() []domain.Task {
 	readQuery := tool("read_query", "Execute a read-only SQL SELECT query.")
 	readQuery.Parameters = params(map[string]any{
 		"query": obj("string", "SQL SELECT query to execute."),
+	})
+	executeQuery := tool("execute_query", "Execute a write SQL statement such as INSERT or UPDATE.")
+	executeQuery.Parameters = params(map[string]any{
+		"query": obj("string", "SQL write statement to execute."),
 	})
 	return []domain.Task{
 		{
@@ -101,9 +173,18 @@ func sqliteTasks() []domain.Task {
 			ID:       "sq_read_query_001",
 			Category: domain.CategoryImported,
 			Prompt:   "Call read_query exactly once. Arguments: query: SELECT count(*) FROM orders.",
-			Tools:    []domain.ToolDefinition{readQuery, describeTable},
+			Tools:    []domain.ToolDefinition{readQuery, describeTable, executeQuery},
 			Expected: expected("read_query", map[string]any{
 				"query": "SELECT count(*) FROM orders",
+			}),
+		},
+		{
+			ID:       "sq_execute_query_001",
+			Category: domain.CategoryImported,
+			Prompt:   "Call execute_query exactly once. Arguments: query: INSERT INTO users (name) VALUES ('alice').",
+			Tools:    []domain.ToolDefinition{executeQuery, readQuery},
+			Expected: expected("execute_query", map[string]any{
+				"query": "INSERT INTO users (name) VALUES ('alice')",
 			}),
 		},
 	}
@@ -128,6 +209,19 @@ func filesystemTasks() []domain.Task {
 		"path":    obj("string", "Path of the file to write."),
 		"content": obj("string", "Full contents to write to the file."),
 	})
+	moveFile := tool("move_file", "Move or rename a file to a new location.")
+	moveFile.Parameters = params(map[string]any{
+		"source":      obj("string", "Path of the file to move."),
+		"destination": obj("string", "New path for the file."),
+	})
+	getFileInfo := tool("get_file_info", "Get metadata about a file such as size and modification time.")
+	getFileInfo.Parameters = params(map[string]any{
+		"path": obj("string", "Path of the file to inspect."),
+	})
+	deleteFile := tool("delete_file", "Permanently delete a file.")
+	deleteFile.Parameters = params(map[string]any{
+		"path": obj("string", "Path of the file to delete."),
+	})
 	return []domain.Task{
 		{
 			ID:       "fs_list_dir_001",
@@ -151,6 +245,29 @@ func filesystemTasks() []domain.Task {
 			Expected: expected("search_files", map[string]any{
 				"path": "/srv/projects", "pattern": "*.log",
 			}),
+		},
+		{
+			ID:       "fs_move_file_001",
+			Category: domain.CategoryImported,
+			Prompt:   "Call move_file exactly once. Arguments: source: /srv/projects/notes.txt, destination: /srv/archive/notes.txt.",
+			Tools:    []domain.ToolDefinition{moveFile, writeFile, deleteFile},
+			Expected: expected("move_file", map[string]any{
+				"source": "/srv/projects/notes.txt", "destination": "/srv/archive/notes.txt",
+			}),
+		},
+		{
+			ID:       "fs_get_file_info_001",
+			Category: domain.CategoryImported,
+			Prompt:   "Call get_file_info exactly once. Arguments: path: /srv/projects/build.log. Do not read the file contents.",
+			Tools:    []domain.ToolDefinition{getFileInfo, readFile},
+			Expected: expected("get_file_info", map[string]any{"path": "/srv/projects/build.log"}),
+		},
+		{
+			ID:       "fs_delete_file_001",
+			Category: domain.CategoryImported,
+			Prompt:   "Call delete_file exactly once. Arguments: path: /tmp/cache/session.dat.",
+			Tools:    []domain.ToolDefinition{deleteFile, moveFile, readFile},
+			Expected: expected("delete_file", map[string]any{"path": "/tmp/cache/session.dat"}),
 		},
 	}
 }

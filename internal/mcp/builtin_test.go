@@ -58,7 +58,7 @@ func TestCompressMaxReplacesWithMetaTools(t *testing.T) {
 }
 
 func TestBuiltinMaxMetaFlow(t *testing.T) {
-	p := newBuiltinProxy(domain.LevelMax, sampleTools()).(*builtinProxy)
+	p := newBuiltinProxy(domain.LevelMax, nil, sampleTools()).(*builtinProxy)
 	ctx := context.Background()
 	schema, err := p.Call(ctx, domain.ToolCall{
 		Name:      MetaGetSchema,

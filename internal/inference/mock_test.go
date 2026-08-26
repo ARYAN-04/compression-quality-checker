@@ -146,3 +146,43 @@ func TestStemInflections(t *testing.T) {
 		}
 	}
 }
+
+func TestExplicitMultiHopChain(t *testing.T) {
+	prompt := "Step 1: call search_issues_jql. Arguments: jql: project = ACME AND summary ~ payment retry. Step 2: call get_issue. Arguments: issue_key: <from:search_issues_jql.issue_key>. Step 3: call add_comment. Arguments: issue_key: <from:get_issue.issue_key>, body: Confirmed duplicate of ACME-99."
+	tools := []domain.ToolDefinition{
+		{Name: "search_issues_jql", Description: "Search issues using JQL."},
+		{Name: "get_issue", Description: "Get details of an issue."},
+		{Name: "add_comment", Description: "Add a comment to an issue."},
+	}
+	m := NewMock("mock-chain")
+	msgs := []Message{{Role: "user", Content: prompt}}
+
+	c1 := chatOnce(t, m, msgs, tools)
+	if c1.Name != "search_issues_jql" {
+		t.Fatalf("turn 1: got tool %q, want search_issues_jql", c1.Name)
+	}
+	msgs = append(msgs,
+		AssistantToolCall(c1.Name, `{"jql":"project = ACME"}`, "c1"),
+		Message{Role: "tool", Content: `{"ok":true,"tool":"search_issues_jql","issue_key":"ACME-42"}`},
+	)
+
+	c2 := chatOnce(t, m, msgs, tools)
+	if c2.Name != "get_issue" {
+		t.Fatalf("turn 2: got tool %q, want get_issue", c2.Name)
+	}
+	if c2.Arguments["issue_key"] != "ACME-42" {
+		t.Fatalf("turn 2: threaded issue_key = %v, want ACME-42", c2.Arguments["issue_key"])
+	}
+	msgs = append(msgs,
+		AssistantToolCall(c2.Name, `{"issue_key":"ACME-42"}`, "c2"),
+		Message{Role: "tool", Content: `{"ok":true,"tool":"get_issue","issue_key":"ACME-42"}`},
+	)
+
+	c3 := chatOnce(t, m, msgs, tools)
+	if c3.Name != "add_comment" {
+		t.Fatalf("turn 3: got tool %q, want add_comment", c3.Name)
+	}
+	if c3.Arguments["issue_key"] != "ACME-42" {
+		t.Fatalf("turn 3: threaded issue_key = %v, want ACME-42", c3.Arguments["issue_key"])
+	}
+}

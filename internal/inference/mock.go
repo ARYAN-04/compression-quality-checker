@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"can-i-compress-it/internal/domain"
@@ -28,10 +29,11 @@ func NewMock(model string) *Mock { return &Mock{model: model} }
 func (m *Mock) Name() string { return m.model }
 
 // argRe captures "key: value" pairs where a value is either a threaded
-// placeholder (<from:tool.field>) or a bare token ending at punctuation.
-// Dots are allowed inside a value when followed by more token
-// characters, so paths like /srv/README.md survive extraction.
-var argRe = regexp.MustCompile(`\b([a-z_]+):\s*(<from:[^>]*>|(?:[\w/@*:-]|\.[\w/])*)`)
+// placeholder (<from:tool.field>) or a bare token ending at punctuation
+// (comma, semicolon, newline, or sentence period). Interior dots are
+// consumed when followed by more token characters, so values like
+// /srv/README.md or v1.2 survive extraction.
+var argRe = regexp.MustCompile(`\b([a-z_]+):\s*(<from:[^>]*>|(?:[^,;\n.]|\.[\w/@*])*)`)
 
 // Chat implements Model with deterministic behaviour. Explicit-style
 // prompts (containing snake_case tool names) follow the original path;
@@ -58,7 +60,7 @@ func (m *Mock) explicitTurn(msgs []Message, prompt string, tools []domain.ToolDe
 	if len(tools) > 0 && bestScore <= 0 {
 		best = tools[0].Name // forced wrong pick when nothing matches
 	}
-	if named := nthMentionedTool(prompt, countAssistantCalls(msgs)); named != "" {
+	if named := nextMentionedTool(prompt, invokedTools(msgs)); named != "" {
 		for _, t := range tools {
 			if t.Name == named {
 				best = named // chains are followed in prompt order
@@ -66,8 +68,9 @@ func (m *Mock) explicitTurn(msgs []Message, prompt string, tools []domain.ToolDe
 			}
 		}
 	}
+	segment := promptSegmentForTool(prompt, best)
 	return Response{
-		ToolCalls:  []domain.ToolCall{{Name: best, Arguments: m.resolveThreaded(m.extractArgs(prompt), msgs)}},
+		ToolCalls:  []domain.ToolCall{{Name: best, Arguments: m.resolveThreaded(m.extractArgs(segment), msgs)}},
 		TokensUsed: 40 + len(tools)*12,
 	}, nil
 }
@@ -110,7 +113,7 @@ func (m *Mock) intentTurn(msgs []Message, prompt string, tools []domain.ToolDefi
 	}
 	// Descriptive "the create session tool" references are the intent
 	// counterpart of explicit name mentions: they drive step order.
-	if named := metaTarget(prompt, countAssistantCalls(msgs)); named != "" && !called[named] {
+	if named := metaTarget(prompt, msgs); named != "" && !called[named] {
 		for _, t := range tools {
 			if t.Name == named {
 				best = named
@@ -176,7 +179,7 @@ func (m *Mock) bindIntentArgs(prompt string, t domain.ToolDefinition, msgs []Mes
 // degrading exactly like small models do: some fraction of tasks skip
 // the schema fetch and lose the ability to thread intermediate values.
 func (m *Mock) metaTurn(msgs []Message, prompt string) (Response, error) {
-	target := metaTarget(prompt, countAssistantCalls(msgs))
+	target := metaTarget(prompt, msgs)
 	if !assistantCalled(msgs, mcp.MetaGetSchema) {
 		if m.skipSchemaFetch(prompt) {
 			args := m.metaInvokeArgs(prompt, target, msgs)
@@ -201,21 +204,37 @@ func (m *Mock) metaTurn(msgs []Message, prompt string) (Response, error) {
 	}, nil
 }
 
-// metaTarget picks the nth tool referenced by the prompt: explicit
-// prompts mention snake_case names directly; intent prompts use
-// descriptive "the create session tool" phrasing. Single-step prompts
-// keep resolving to their only mention on later turns.
-func metaTarget(prompt string, n int) string {
-	for _, i := range []int{n, 0} {
-		if named := nthMentionedTool(prompt, i); named != "" {
-			return named
-		}
+// metaTarget picks the next tool referenced by the prompt that has not
+// been invoked yet: explicit prompts mention snake_case names directly;
+// intent prompts use descriptive "the create session tool" phrasing.
+// Placeholder references duplicate earlier mentions, so progress is
+// tracked by invocation history rather than a positional index.
+func metaTarget(prompt string, msgs []Message) string {
+	invoked := invokedTools(msgs)
+	done := map[string]bool{}
+	for _, name := range invoked {
+		done[name] = true
 	}
-	mentions := mentionRe.FindAllStringSubmatch(prompt, -1)
-	for _, i := range []int{n, 0} {
-		if i < len(mentions) {
-			return strings.Join(strings.Fields(mentions[i][1]), "_")
+	next := func(names []string) string {
+		for _, m := range names {
+			if !done[m] {
+				return m
+			}
 		}
+		return ""
+	}
+	if target := next(explicitToolMentions(prompt)); target != "" {
+		return target
+	}
+	var descriptive []string
+	for _, match := range mentionRe.FindAllStringSubmatch(prompt, -1) {
+		descriptive = append(descriptive, strings.Join(strings.Fields(match[1]), "_"))
+	}
+	if target := next(descriptive); target != "" {
+		return target
+	}
+	if len(invoked) > 0 {
+		return invoked[len(invoked)-1] // single-step prompts keep their tool
 	}
 	return ""
 }
@@ -225,11 +244,39 @@ func metaTarget(prompt string, n int) string {
 // bind values — which is exactly what skipped lookups lose.
 func (m *Mock) metaInvokeArgs(prompt, target string, msgs []Message) map[string]any {
 	if snakeRe.MatchString(prompt) {
-		return m.resolveThreaded(m.extractArgs(prompt), msgs)
+		segment := promptSegmentForTool(prompt, target)
+		return m.resolveThreaded(m.extractArgs(segment), msgs)
 	}
 	schemaParams := fetchedSchema(msgs, target)
 	fake := domain.ToolDefinition{Name: target, Parameters: schemaParams}
 	return m.bindIntentArgs(prompt, fake, msgs)
+}
+
+var stepRe = regexp.MustCompile(`(?i)(?:^|\bStep\s+\d+:)\s*`)
+
+// promptSegmentForTool extracts the step substring relevant to tool,
+// preventing multi-step prompts with shared argument names from
+// overwriting earlier step parameters.
+func promptSegmentForTool(prompt, tool string) string {
+	if tool == "" {
+		return prompt
+	}
+	steps := stepRe.Split(prompt, -1)
+	if len(steps) <= 1 {
+		return prompt
+	}
+	targetCall := "call " + strings.ToLower(tool)
+	for _, step := range steps {
+		if strings.Contains(strings.ToLower(step), targetCall) {
+			return step
+		}
+	}
+	for _, step := range steps {
+		if strings.Contains(strings.ToLower(step), strings.ToLower(tool)) {
+			return step
+		}
+	}
+	return prompt
 }
 
 // skipSchemaFetch deterministically degrades some fraction of tasks per
@@ -571,12 +618,61 @@ func countAssistantCalls(msgs []Message) int {
 	return n
 }
 
-// nthMentionedTool returns the nth snake_case tool name mentioned in the
-// prompt (0-based), so chained calls follow prompt order.
-func nthMentionedTool(prompt string, n int) string {
-	toks := snakeRe.FindAllString(prompt, -1)
-	if n < len(toks) {
-		return toks[n]
+// invokedTools lists underlying tool names already executed, in order:
+// direct calls at normal levels, invoke_tool targets at max. Schema
+// fetches are protocol overhead and do not advance the chain.
+func invokedTools(msgs []Message) []string {
+	var out []string
+	for _, msg := range msgs {
+		if msg.Role != "assistant" {
+			continue
+		}
+		for _, tc := range msg.ToolCalls {
+			switch tc.Function.Name {
+			case mcp.MetaGetSchema:
+				continue
+			case mcp.MetaInvoke:
+				var args struct {
+					ToolName string `json:"tool_name"`
+				}
+				if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err == nil && args.ToolName != "" {
+					out = append(out, args.ToolName)
+				}
+			default:
+				out = append(out, tc.Function.Name)
+			}
+		}
+	}
+	return out
+}
+
+var callRe = regexp.MustCompile(`(?i)\bcall\s+([a-z]+(?:_[a-z]+)*)`)
+
+// explicitToolMentions extracts tool names referenced via "call <tool>"
+// phrases, falling back to snake_case tokens if no call prefix is found.
+func explicitToolMentions(prompt string) []string {
+	var out []string
+	for _, match := range callRe.FindAllStringSubmatch(prompt, -1) {
+		out = append(out, strings.ToLower(match[1]))
+	}
+	if len(out) == 0 {
+		out = snakeRe.FindAllString(prompt, -1)
+	}
+	return out
+}
+
+// nextMentionedTool returns the first prompt-mentioned tool that has not
+// been invoked yet, so chains advance step by step even when placeholder
+// references duplicate earlier mentions.
+func nextMentionedTool(prompt string, invoked []string) string {
+	done := map[string]bool{}
+	for _, name := range invoked {
+		done[name] = true
+	}
+	for _, m := range explicitToolMentions(prompt) {
+		if !done[m] {
+			return m
+		}
 	}
 	return ""
 }
@@ -592,8 +688,8 @@ func lastUserPrompt(msgs []Message) string {
 	return ""
 }
 
+// parseInt64 accepts only strings that are entirely an integer, so
+// values like Slack's "1756000000.000100" stay strings.
 func parseInt64(s string) (int64, error) {
-	var n int64
-	_, err := fmt.Sscanf(s, "%d", &n)
-	return n, err
+	return strconv.ParseInt(s, 10, 64)
 }

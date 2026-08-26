@@ -106,6 +106,7 @@ func runMatrix(cmd *cobra.Command, _ []string) error {
 			Level:        level,
 			Binary:       runFlags.compressor,
 			TargetServer: "suite",
+			ThreadFields: suite.ThreadedFields(tasks),
 		}, suite.UniqueTools(tasks))
 	}, slog.Default())
 
