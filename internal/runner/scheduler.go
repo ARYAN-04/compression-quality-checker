@@ -21,11 +21,12 @@ type ProxyFactory func(ctx context.Context, level domain.CompressionLevel) (mcp.
 
 // Scheduler executes matrices for one model.
 type Scheduler struct {
-	model     inference.Model
-	newProxy  ProxyFactory
-	evaluator domain.Evaluator
-	log       *slog.Logger
-	maxTurns  int
+	model        inference.Model
+	newProxy     ProxyFactory
+	evaluator    domain.Evaluator
+	log          *slog.Logger
+	maxTurns     int
+	onCellResult func(domain.CellResult)
 }
 
 // NewScheduler wires a scheduler for a model backend.
@@ -37,6 +38,11 @@ func NewScheduler(model inference.Model, newProxy ProxyFactory, log *slog.Logger
 		log:       log,
 		maxTurns:  4,
 	}
+}
+
+// SetOnCellResult registers a listener called immediately when each cell completes.
+func (s *Scheduler) SetOnCellResult(fn func(domain.CellResult)) {
+	s.onCellResult = fn
 }
 
 // ExecuteMatrix implements domain.Runner: every task x every level.
@@ -71,6 +77,9 @@ func (s *Scheduler) runLevel(ctx context.Context, suite []domain.Task, level dom
 		res, err := s.runTask(ctx, proxy, tools, level, task)
 		if err != nil {
 			return nil, fmt.Errorf("task %s: %w", task.ID, err)
+		}
+		if s.onCellResult != nil {
+			s.onCellResult(res)
 		}
 		out = append(out, res)
 	}

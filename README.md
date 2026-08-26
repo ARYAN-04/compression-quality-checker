@@ -34,6 +34,9 @@ go install ./cmd/can-i-compress-it
 ## Quick start
 
 ```bash
+# 0. Launch the interactive Bubble Tea wizard (or run without arguments)
+can-i-compress-it tui
+
 # 1. Synthesize an intent-based task suite with 30 distractor tools
 can-i-compress-it suite generate -n 30 --ambiguity high --prompt-style intent \
   --distractors 30 --seed 42 -o ./suites/synthetic_v1.json
@@ -70,6 +73,7 @@ synthetic suite is used so `run` works out of the box.
 
 | Command | Purpose |
 |---|---|
+| `tui` | Interactive guided wizard & live safety matrix explorer (default when invoked without args) |
 | `run` | Full factorial matrix against one model endpoint |
 | `test` | Isolated single-prompt probe at one compression level |
 | `suite generate` | Synthesize task suites with parameterized ambiguity and distractors |
@@ -110,7 +114,8 @@ production binary instead.
 
 ```
 cmd/can-i-compress-it    entry point
-internal/cmd             cobra routing (run/test/suite/analyze/report)
+internal/cmd             cobra routing (tui/run/test/suite/analyze/report)
+internal/tui             interactive bubble tea wizard, live monitor, and results explorer
 internal/domain          shared types, interfaces, level parsing
 internal/suite           generator, distractor padding, loader, server templates
 internal/mcp             subprocess proxy, builtin compressor, meta-tools, stdio client
@@ -133,7 +138,7 @@ Generated artifacts (`results/`, `suites/`) are not committed.
 
 ## Status
 
-v0.2.0 — all roadmap phases implemented and verified. Supports distractor
-catalogue scaling, natural-intent prompting, live MCP server schema import
-with templates, and multi-model trace aggregation with log regression.
-See `plan.html` (local) for the full specification.
+v0.4.0 — all roadmap phases implemented and verified. Includes Bubble Tea
+interactive guided wizard with live execution streaming, real-time metrics,
+and safety matrix explorer with failure cliff detection and bootstrap CIs.
+

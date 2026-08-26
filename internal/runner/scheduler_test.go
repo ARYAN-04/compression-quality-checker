@@ -48,3 +48,22 @@ func TestMaxLevelMetaUnwrapping(t *testing.T) {
 		}
 	}
 }
+
+func TestSchedulerOnCellResult(t *testing.T) {
+	tasks := suite.Builtin()[:2]
+	sched := NewScheduler(inference.NewMock("mock"),
+		func(ctx context.Context, level domain.CompressionLevel) (mcp.Proxy, error) {
+			return mcp.NewProxy(ctx, mcp.Config{Level: level}, suite.UniqueTools(tasks))
+		}, slog.Default())
+	var count int
+	sched.SetOnCellResult(func(c domain.CellResult) {
+		count++
+	})
+	_, err := sched.ExecuteMatrix(context.Background(), tasks, []domain.CompressionLevel{domain.LevelNone})
+	if err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 onCell callbacks, got %d", count)
+	}
+}

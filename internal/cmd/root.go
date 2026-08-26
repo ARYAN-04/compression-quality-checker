@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"can-i-compress-it/internal/tui"
 )
 
 var version = "0.1.0"
@@ -15,8 +17,8 @@ var rootCmd = &cobra.Command{
 	Short:        "Benchmark how MCP schema compression impacts tool-use accuracy of local models",
 	Version:      version,
 	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		return cmd.Help()
+	RunE: func(_ *cobra.Command, _ []string) error {
+		return tui.Run()
 	},
 }
 
