@@ -215,10 +215,16 @@ func desc(vm map[string]any) string {
 
 func requiredSet(p map[string]any) map[string]bool {
 	out := map[string]bool{}
-	raw, _ := p["required"].([]any)
-	for _, r := range raw {
-		if s, ok := r.(string); ok {
-			out[s] = true
+	switch raw := p["required"].(type) {
+	case []string:
+		for _, r := range raw {
+			out[r] = true
+		}
+	case []any:
+		for _, r := range raw {
+			if s, ok := r.(string); ok {
+				out[s] = true
+			}
 		}
 	}
 	return out
