@@ -108,6 +108,10 @@ type RunResult struct {
 	Levels    []CompressionLevel `json:"levels"`
 	Tasks     int                `json:"tasks"`
 	Results   []CellResult       `json:"results"`
+
+	// ParameterCountB is the subject model's size in billions of
+	// parameters; zero means unknown (pre-v0.2 traces).
+	ParameterCountB float64 `json:"parameter_count_b,omitempty"`
 }
 
 // FailureCliffReport is the per-model safety verdict.
