@@ -47,13 +47,17 @@ var (
 
 // filler pools used to pad catalogues with plausible background tools.
 var (
-	padVerbs = []string{"list", "create", "update", "delete", "archive",
-		"restore", "export", "import", "validate", "sync"}
-	padNouns = []string{"attachment", "comment", "label", "webhook", "token",
+	padVerbs = []string{
+		"list", "create", "update", "delete", "archive",
+		"restore", "export", "import", "validate", "sync",
+	}
+	padNouns = []string{
+		"attachment", "comment", "label", "webhook", "token",
 		"secret", "policy", "rule", "alert", "metric", "dashboard", "widget",
 		"invoice", "order", "customer", "product", "shipment", "category",
 		"collection", "channel", "invite", "bookmark", "snippet", "draft",
-		"queue", "topic", "subscription", "credential", "endpoint", "quota"}
+		"queue", "topic", "subscription", "credential", "endpoint", "quota",
+	}
 )
 
 // Generate produces numTasks tasks across the three failure-mode categories.
