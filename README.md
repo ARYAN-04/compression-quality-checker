@@ -24,32 +24,43 @@ model starts failing, empirically.
 Requires Go 1.27+.
 
 ```bash
-go build -o /usr/local/bin/can-i-compress-it ./cmd/can-i-compress-it
+# Build binary in the project directory
+go build -o can-i-compress-it ./cmd/can-i-compress-it
+
+# Or install to $GOPATH/bin
+go install ./cmd/can-i-compress-it
 ```
 
 ## Quick start
 
 ```bash
-# Offline pipeline verification (no model needed)
-can-i-compress-it suite generate -n 30 --ambiguity high --seed 42 \
-  -o ./suites/synthetic_v1.json
-can-i-compress-it run --model qwen-3.5-0.8b --mock \
+# 1. Synthesize an intent-based task suite with 30 distractor tools
+can-i-compress-it suite generate -n 30 --ambiguity high --prompt-style intent \
+  --distractors 30 --seed 42 -o ./suites/synthetic_v1.json
+
+# 2. Offline pipeline verification with parameter count recording
+can-i-compress-it run --model qwen-3.5-0.8b --params-b 0.8 --mock \
   --suite ./suites/synthetic_v1.json \
   --output ./results/qwen_results.json \
   --html-report ./results/qwen_report.html \
   --md-table ./results/safety_matrix.md
 
-# Real sweep against a local Ollama model
+# 3. Real sweep against a local Ollama model
 can-i-compress-it run \
   --model qwen3.5:0.8b \
+  --params-b 0.8 \
   --endpoint http://localhost:11434/v1 \
   --suite ./suites/synthetic_v1.json \
   --output ./results/qwen_results.json \
   --html-report ./results/qwen_report.html
 
-# Recompute statistics / cliffs from a saved trace
-can-i-compress-it analyze -i ./results/qwen_results.json \
-  --bootstrap-iterations 1000 --output-table ./results/safety_matrix.md
+# 4. Import a live MCP server with pre-annotated benchmark templates
+can-i-compress-it suite import --template sqlite -o ./suites/sqlite.json \
+  -- npx -y @modelcontextprotocol/server-sqlite /tmp/test.db
+
+# 5. Multi-trace analysis and cross-model regression across all saved runs
+can-i-compress-it analyze -i "results/*.json" \
+  --bootstrap-iterations 1000 --output-table ./results/combined_safety.md
 ```
 
 If `--suite` points at the default path and no file exists, an embedded
@@ -61,8 +72,9 @@ synthetic suite is used so `run` works out of the box.
 |---|---|
 | `run` | Full factorial matrix against one model endpoint |
 | `test` | Isolated single-prompt probe at one compression level |
-| `suite generate` | Synthesize task suites with parameterized ambiguity |
-| `analyze` | Bootstrap intervals + failure cliffs from saved traces |
+| `suite generate` | Synthesize task suites with parameterized ambiguity and distractors |
+| `suite import` | Ingest tool schemas from a live MCP server (with template matching) |
+| `analyze` | Bootstrap intervals, failure cliffs, and regression from single or glob traces |
 | `report` | Re-render traces as Markdown/HTML without recomputation |
 
 Run any command with `-h` for full flag documentation.
@@ -92,7 +104,7 @@ production binary instead.
 - **Failure cliff** — first level where accuracy drops >=10pp below the
   model's own uncompressed baseline, with paired-bootstrap 95% CIs.
 - **Scale regression** — fits cliff depth vs log(parameter count) across
-  subject models.
+  subject models using recorded `--params-b` metadata.
 
 ## Architecture
 
@@ -100,8 +112,8 @@ production binary instead.
 cmd/can-i-compress-it    entry point
 internal/cmd             cobra routing (run/test/suite/analyze/report)
 internal/domain          shared types, interfaces, level parsing
-internal/suite           seeded generator, loader, embedded default suite
-internal/mcp             subprocess proxy + builtin compressor + meta-tools
+internal/suite           generator, distractor padding, loader, server templates
+internal/mcp             subprocess proxy, builtin compressor, meta-tools, stdio client
 internal/inference       OpenAI-compatible client + deterministic mock
 internal/eval            BFCL-style matcher + multi-hop chain verifier
 internal/runner          factorial scheduler / agent loop
@@ -121,6 +133,7 @@ Generated artifacts (`results/`, `suites/`) are not committed.
 
 ## Status
 
-v0.1.0 — all seven roadmap phases implemented and verified offline via the
-mock runner. Judge-model adjudication and real-world MCP schema import are
-not yet implemented. See `plan.html` (local) for the full specification.
+v0.2.0 — all roadmap phases implemented and verified. Supports distractor
+catalogue scaling, natural-intent prompting, live MCP server schema import
+with templates, and multi-model trace aggregation with log regression.
+See `plan.html` (local) for the full specification.

@@ -74,13 +74,13 @@ footer{color:var(--muted);font-size:.78rem;margin-top:1rem;}
 <h1>` + htmlpkg.EscapeString(title) + `</h1>
 <p class="sub">Tool-use accuracy by model &times; schema compression level &middot; failure cliff = first level &ge;10pp below uncompressed baseline</p>
 <div class="card"><table>
-<tr><th>Model</th>`)
+<tr><th>Model</th><th>Params (B)</th>`)
 	for _, l := range t.Levels {
 		fmt.Fprintf(&b, "<th>%s</th>", l)
 	}
 	b.WriteString("<th>Failure cliff</th></tr>")
 	for _, row := range t.Rows {
-		fmt.Fprintf(&b, "<tr><td>%s</td>", row.Model)
+		fmt.Fprintf(&b, "<tr><td>%s</td><td>%s</td>", row.Model, formatB(row.B))
 		for _, l := range t.Levels {
 			acc := row.Cells[l].Acc * 100
 			class := "good"

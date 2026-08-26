@@ -30,6 +30,10 @@ type Config struct {
 	Binary       string   // path to mcp-compressor; empty selects builtin backend
 	TargetCmd    []string // MCP server command to wrap in subprocess mode
 	TargetServer string   // builtin backend: "suite" serves the task suite tools
+
+	// ThreadFields maps tool name -> result fields its synthesized
+	// payload must carry so multi-hop chains can thread values offline.
+	ThreadFields map[string][]string
 }
 
 // NewProxy builds a proxy for cfg at ctx cancellation-safe lifecycle.
@@ -38,7 +42,7 @@ func NewProxy(ctx context.Context, cfg Config, suiteTools []domain.ToolDefinitio
 		return nil, err
 	}
 	if cfg.Binary == "" {
-		return newBuiltinProxy(cfg.Level, suiteTools), nil
+		return newBuiltinProxy(cfg.Level, cfg.ThreadFields, suiteTools), nil
 	}
 	return newSubprocessProxy(ctx, cfg, suiteTools)
 }

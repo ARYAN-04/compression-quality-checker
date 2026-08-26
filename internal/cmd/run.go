@@ -29,6 +29,7 @@ var runFlags struct {
 	mdReport   string
 	levels     []string
 	compressor string
+	paramsB    float64
 	mock       bool
 }
 
@@ -52,6 +53,8 @@ func init() {
 		[]string{"none", "low", "medium", "high", "max"}, "compression levels to sweep")
 	fs.StringVar(&runFlags.compressor, "compressor", "",
 		"path to mcp-compressor binary (omit for builtin compressor)")
+	fs.Float64Var(&runFlags.paramsB, "params-b", 0,
+		"subject model parameter count in billions (recorded in the trace for regression analysis)")
 	fs.BoolVar(&runFlags.mock, "mock", false, "use deterministic mock model (offline verification)")
 	_ = runCmd.MarkFlagRequired("model")
 }
@@ -103,6 +106,7 @@ func runMatrix(cmd *cobra.Command, _ []string) error {
 			Level:        level,
 			Binary:       runFlags.compressor,
 			TargetServer: "suite",
+			ThreadFields: suite.ThreadedFields(tasks),
 		}, suite.UniqueTools(tasks))
 	}, slog.Default())
 
@@ -114,13 +118,14 @@ func runMatrix(cmd *cobra.Command, _ []string) error {
 	}
 
 	run := domain.RunResult{
-		RunID:     fmt.Sprintf("run_%d", time.Now().Unix()),
-		Model:     runFlags.model,
-		Endpoint:  runFlags.endpoint,
-		SuitePath: runFlags.suitePath,
-		Levels:    levels,
-		Tasks:     len(tasks),
-		Results:   cells,
+		RunID:           fmt.Sprintf("run_%d", time.Now().Unix()),
+		Model:           runFlags.model,
+		Endpoint:        runFlags.endpoint,
+		SuitePath:       runFlags.suitePath,
+		Levels:          levels,
+		Tasks:           len(tasks),
+		Results:         cells,
+		ParameterCountB: runFlags.paramsB,
 	}
 	out := cmd.OutOrStdout()
 	if err := report.SaveJSON(runFlags.output, run); err != nil {
@@ -128,7 +133,7 @@ func runMatrix(cmd *cobra.Command, _ []string) error {
 	}
 	fmt.Fprintf(out, "wrote %d cell results to %s\n\n", len(cells), runFlags.output)
 
-	table := report.BuildTable(run)
+	table := report.BuildTable([]domain.RunResult{run})
 	table.TermTable(out)
 	if runFlags.htmlReport != "" {
 		title := "Compression Safety Matrix — " + runFlags.model

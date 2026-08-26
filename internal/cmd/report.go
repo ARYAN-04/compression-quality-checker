@@ -18,11 +18,11 @@ var reportCmd = &cobra.Command{
 	Use:   "report",
 	Short: "Format existing result files into markdown or HTML reports",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		run, err := report.LoadJSON(reportFlags.input)
+		runs, err := report.LoadRuns(reportFlags.input)
 		if err != nil {
 			return err
 		}
-		table := report.BuildTable(run)
+		table := report.BuildTable(runs)
 		out := cmd.OutOrStdout()
 		table.TermTable(out)
 		if reportFlags.md != "" {
@@ -32,7 +32,7 @@ var reportCmd = &cobra.Command{
 			fmt.Fprintf(out, "markdown: %s\n", reportFlags.md)
 		}
 		if reportFlags.html != "" {
-			title := "Compression Safety Matrix — " + run.Model
+			title := "Compression Safety Matrix — " + report.MergeRuns(runs).Model
 			if err := report.SaveHTML(reportFlags.html, table.HTML(title)); err != nil {
 				return err
 			}

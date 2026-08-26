@@ -10,7 +10,7 @@ import (
 
 // TermTable renders the safety matrix as a styled terminal table.
 func (t SafetyTable) TermTable(w io.Writer) {
-	header := []string{"model"}
+	header := []string{"model", "params(b)"}
 	for _, l := range t.Levels {
 		header = append(header, string(l))
 	}
@@ -18,7 +18,7 @@ func (t SafetyTable) TermTable(w io.Writer) {
 
 	rows := [][]string{header}
 	for _, row := range t.Rows {
-		r := []string{row.Model}
+		r := []string{row.Model, formatB(row.B)}
 		for _, l := range t.Levels {
 			r = append(r, fmt.Sprintf("%.1f%%", row.Cells[l].Acc*100))
 		}

@@ -17,14 +17,15 @@ const (
 )
 
 type builtinProxy struct {
-	level   domain.CompressionLevel
-	tools   []domain.ToolDefinition
-	schemas map[string]map[string]any // original full schemas for meta lookup
-	calls   []domain.ToolCall         // executed call history (for multihop eval)
+	level        domain.CompressionLevel
+	tools        []domain.ToolDefinition
+	schemas      map[string]map[string]any // original full schemas for meta lookup
+	calls        []domain.ToolCall         // executed call history (for multihop eval)
+	threadFields map[string][]string       // tool -> result fields to synthesize
 }
 
 // newBuiltinProxy applies deterministic in-process compression to tools.
-func newBuiltinProxy(level domain.CompressionLevel, tools []domain.ToolDefinition) Proxy {
+func newBuiltinProxy(level domain.CompressionLevel, threadFields map[string][]string, tools []domain.ToolDefinition) Proxy {
 	compressed := compressTools(level, tools)
 	schemas := make(map[string]map[string]any, len(tools))
 	for _, t := range tools {
@@ -34,7 +35,7 @@ func newBuiltinProxy(level domain.CompressionLevel, tools []domain.ToolDefinitio
 			"parameters":  t.Parameters,
 		}
 	}
-	return &builtinProxy{level: level, tools: compressed, schemas: schemas}
+	return &builtinProxy{level: level, tools: compressed, schemas: schemas, threadFields: threadFields}
 }
 
 func (p *builtinProxy) Tools(context.Context) ([]domain.ToolDefinition, error) {
@@ -52,15 +53,23 @@ func (p *builtinProxy) Call(_ context.Context, call domain.ToolCall) (any, error
 }
 
 // synthesizeResult produces a deterministic success payload including a
-// result_id so multi-hop tasks can thread values between steps.
+// result_id so multi-hop tasks can thread values between steps. Fields
+// declared in threadFields are emitted with deterministic values so any
+// "<from:tool.field>" chain placeholder resolves offline.
 func (p *builtinProxy) synthesizeResult(name string) map[string]any {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(name))
-	return map[string]any{
+	res := map[string]any{
 		"ok":        true,
 		"tool":      name,
 		"result_id": fmt.Sprintf("res-%d-%08x", len(p.calls), h.Sum32()),
 	}
+	for _, field := range p.threadFields[name] {
+		h.Reset()
+		_, _ = h.Write([]byte(name + "." + field))
+		res[field] = fmt.Sprintf("%s-%d-%08x", field, len(p.calls), h.Sum32())
+	}
+	return res
 }
 
 // callMeta resolves get_tool_schema / invoke_tool wrappers. A direct call to
@@ -215,10 +224,16 @@ func desc(vm map[string]any) string {
 
 func requiredSet(p map[string]any) map[string]bool {
 	out := map[string]bool{}
-	raw, _ := p["required"].([]any)
-	for _, r := range raw {
-		if s, ok := r.(string); ok {
-			out[s] = true
+	switch raw := p["required"].(type) {
+	case []string:
+		for _, r := range raw {
+			out[r] = true
+		}
+	case []any:
+		for _, r := range raw {
+			if s, ok := r.(string); ok {
+				out[s] = true
+			}
 		}
 	}
 	return out
