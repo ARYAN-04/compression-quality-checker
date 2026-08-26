@@ -29,7 +29,9 @@ func (m *Mock) Name() string { return m.model }
 
 // argRe captures "key: value" pairs where a value is either a threaded
 // placeholder (<from:tool.field>) or a bare token ending at punctuation.
-var argRe = regexp.MustCompile(`\b([a-z_]+):\s*(<from:[^>]*>|[^,;\n.]*)`)
+// Dots are allowed inside a value when followed by more token
+// characters, so paths like /srv/README.md survive extraction.
+var argRe = regexp.MustCompile(`\b([a-z_]+):\s*(<from:[^>]*>|(?:[\w/@*:-]|\.[\w/])*)`)
 
 // Chat implements Model with deterministic behaviour. Explicit-style
 // prompts (containing snake_case tool names) follow the original path;
