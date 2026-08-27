@@ -42,8 +42,8 @@ var runCmd = &cobra.Command{
 func init() {
 	fs := runCmd.Flags()
 	fs.StringVar(&runFlags.model, "model", "", "subject model name (required)")
-	fs.StringVar(&runFlags.endpoint, "endpoint", "http://localhost:11434/v1",
-		"OpenAI-compatible endpoint base URL")
+	fs.StringVar(&runFlags.endpoint, "endpoint", "http://localhost:1234/v1",
+		"OpenAI-compatible endpoint URL (e.g. http://localhost:1234/v1 or http://<ip>:1234)")
 	fs.StringVar(&runFlags.apiKey, "api-key", "", "bearer token for remote endpoints")
 	fs.StringVar(&runFlags.suitePath, "suite", defaultSuitePath, "task suite JSON path")
 	fs.StringVar(&runFlags.output, "output", "./results/results.json", "raw JSON trace output path")

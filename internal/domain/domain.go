@@ -69,6 +69,7 @@ type ExpectedCall struct {
 
 // ToolCall is a tool invocation produced by a model (or meta-tool unwrap).
 type ToolCall struct {
+	ID        string         `json:"id,omitempty"`
 	Name      string         `json:"name"`
 	Arguments map[string]any `json:"arguments"`
 }

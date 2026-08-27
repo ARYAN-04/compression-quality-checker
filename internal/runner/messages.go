@@ -22,17 +22,20 @@ func assistantToolCall(call domain.ToolCall) inference.Message {
 	if err != nil {
 		args = []byte("{}")
 	}
-	msg := inference.AssistantToolCall(call.Name, string(args), fmt.Sprintf("call_%s", call.Name))
-	return msg
+	id := call.ID
+	if id == "" {
+		id = fmt.Sprintf("call_%s", call.Name)
+	}
+	return inference.AssistantToolCall(call.Name, string(args), id)
 }
 
 // toolResultMessage feeds a proxy result back into the conversation.
-func toolResultMessage(result any, err error) inference.Message {
+func toolResultMessage(id string, result any, err error) inference.Message {
 	content := "{}"
 	if err != nil {
 		content = fmt.Sprintf(`{"error": %q}`, err.Error())
 	} else if data, mErr := json.Marshal(result); mErr == nil {
 		content = string(data)
 	}
-	return inference.Message{Role: "tool", Content: content}
+	return inference.Message{Role: "tool", Content: content, ToolCallID: id}
 }

@@ -117,7 +117,12 @@ func (s *Scheduler) runTask(ctx context.Context, proxy mcp.Proxy, tools []domain
 			if inner, ok := unwrapMeta(call); ok {
 				executed = append(executed, inner)
 			}
-			msgs = append(msgs, assistantToolCall(call), toolResultMessage(result, err))
+			callID := call.ID
+			if callID == "" {
+				callID = fmt.Sprintf("call_%s", call.Name)
+				call.ID = callID
+			}
+			msgs = append(msgs, assistantToolCall(call), toolResultMessage(callID, result, err))
 		}
 		if len(executed) >= expectedCalls(task) {
 			break

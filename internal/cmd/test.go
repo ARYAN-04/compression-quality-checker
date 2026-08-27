@@ -73,7 +73,8 @@ var testCmd = &cobra.Command{
 func init() {
 	fs := testCmd.Flags()
 	fs.StringVarP(&testFlags.model, "model", "m", "", "model name (required)")
-	fs.StringVar(&testFlags.endpoint, "endpoint", "http://localhost:11434/v1", "endpoint base URL")
+	fs.StringVar(&testFlags.endpoint, "endpoint", "http://localhost:1234/v1",
+		"OpenAI-compatible endpoint URL (e.g. http://localhost:1234/v1 or http://<ip>:1234)")
 	fs.StringVar(&testFlags.apiKey, "api-key", "", "bearer token")
 	fs.StringVarP(&testFlags.prompt, "prompt", "p", "", "task prompt (required)")
 	fs.StringVar(&testFlags.level, "level", "none", "compression level: none|low|medium|high|max")
