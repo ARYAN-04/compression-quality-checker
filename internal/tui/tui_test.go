@@ -49,8 +49,8 @@ func TestProviderStepModel(t *testing.T) {
 		t.Fatalf("expected validation error on empty model")
 	}
 
-	// Switch presets
-	m.applyPreset(4) // Offline Mock
+	// Switch presets to Offline Mock
+	m.applyPreset(4)
 	if !m.IsMock() {
 		t.Fatalf("expected preset 4 to be mock")
 	}
@@ -67,8 +67,18 @@ func TestProviderStepModel(t *testing.T) {
 func TestSuiteStepModel(t *testing.T) {
 	m := NewSuiteStepModel()
 
-	// Default template mode
+	// Default standard full factorial synthetic suite mode
 	tasks, err := m.ResolveTasks()
+	if err != nil {
+		t.Fatalf("ResolveTasks standard failed: %v", err)
+	}
+	if len(tasks) != len(suite.Builtin()) {
+		t.Fatalf("expected %d canonical tasks in standard suite, got %d", len(suite.Builtin()), len(tasks))
+	}
+
+	// Switch to templates mode
+	m.mode = SuiteModeTemplates
+	tasks, err = m.ResolveTasks()
 	if err != nil {
 		t.Fatalf("ResolveTasks templates failed: %v", err)
 	}
@@ -87,7 +97,10 @@ func TestSuiteStepModel(t *testing.T) {
 	}
 
 	// Key update
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	if m.mode != SuiteModeStandard {
+		t.Fatalf("expected mode to switch back to standard on '1'")
+	}
 	view := m.View()
 	if view == "" {
 		t.Fatalf("expected non-empty view")
@@ -112,6 +125,16 @@ func TestCompressionStepModel(t *testing.T) {
 	}
 	if len(levels) != 4 {
 		t.Fatalf("expected 4 levels selected after toggle, got %d", len(levels))
+	}
+
+	// Select all levels with 'a'
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	levels, err = m.SelectedLevels()
+	if err != nil {
+		t.Fatalf("SelectedLevels failed: %v", err)
+	}
+	if len(levels) != 5 {
+		t.Fatalf("expected 5 levels selected after 'a', got %d", len(levels))
 	}
 
 	view := m.View()
@@ -213,6 +236,32 @@ func TestAppModelStateMachine(t *testing.T) {
 	view := app.View()
 	if view == "" {
 		t.Fatalf("expected non-empty view")
+	}
+}
+
+func TestAppModelQuickFullFactorial(t *testing.T) {
+	app := NewAppModel()
+	app.providerStep.applyPreset(4) // Offline Mock
+	app.providerStep.focused = focusPreset
+
+	// Press 'f' on Step 1 to trigger Full Factorial Run (all 5 levels x 12 tasks = 60 cells)
+	m, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	app = m.(AppModel)
+	if app.step != StepRunning {
+		t.Fatalf("expected step to advance immediately to StepRunning, got %v", app.step)
+	}
+	expectedTasks := len(suite.Builtin())
+	if len(app.resolvedTasks) != expectedTasks {
+		t.Fatalf("expected %d resolved tasks, got %d", expectedTasks, len(app.resolvedTasks))
+	}
+	if len(app.selectedLevels) != 5 {
+		t.Fatalf("expected 5 selected levels, got %d", len(app.selectedLevels))
+	}
+	if app.runningView.totalCells != expectedTasks*5 {
+		t.Fatalf("expected totalCells=%d, got %d", expectedTasks*5, app.runningView.totalCells)
+	}
+	if cmd == nil || app.execCtrl == nil {
+		t.Fatalf("expected active execution controller and command")
 	}
 }
 

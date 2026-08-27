@@ -16,10 +16,11 @@ import (
 type SuiteMode int
 
 const (
-	SuiteModeTemplates SuiteMode = iota
-	SuiteModeGenerator
-	SuiteModeLive
-	SuiteModeFile
+	SuiteModeStandard  SuiteMode = iota // [1] Full Factorial Matrix (synthetic_v1)
+	SuiteModeTemplates                  // [2] Pre-annotated Templates
+	SuiteModeGenerator                  // [3] Synthetic Generator
+	SuiteModeLive                       // [4] Live MCP Server
+	SuiteModeFile                       // [5] Custom JSON File
 )
 
 // TemplateItem holds state for template checklist.
@@ -56,7 +57,7 @@ var (
 // NewSuiteStepModel creates an initialized Step 2 model.
 func NewSuiteStepModel() SuiteStepModel {
 	m := SuiteStepModel{
-		mode:         SuiteModeTemplates,
+		mode:         SuiteModeStandard,
 		genAmbiguity: 2, // high
 		genStyle:     0, // explicit
 		genDistracts: 0,
@@ -110,15 +111,18 @@ func (m SuiteStepModel) Update(msg tea.Msg) (SuiteStepModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "1":
-			m.mode = SuiteModeTemplates
+			m.mode = SuiteModeStandard
 			return m, nil
 		case "2":
-			m.mode = SuiteModeGenerator
+			m.mode = SuiteModeTemplates
 			return m, nil
 		case "3":
-			m.mode = SuiteModeLive
+			m.mode = SuiteModeGenerator
 			return m, nil
 		case "4":
+			m.mode = SuiteModeLive
+			return m, nil
+		case "5":
 			m.mode = SuiteModeFile
 			return m, nil
 
@@ -253,6 +257,9 @@ func (m *SuiteStepModel) updateGenFocus() {
 // ResolveTasks synthesizes or loads tasks matching user configuration.
 func (m SuiteStepModel) ResolveTasks() ([]domain.Task, error) {
 	switch m.mode {
+	case SuiteModeStandard:
+		return suite.Builtin(), nil
+
 	case SuiteModeTemplates:
 		var allTasks []domain.Task
 		for _, t := range m.templates {
@@ -288,7 +295,6 @@ func (m SuiteStepModel) ResolveTasks() ([]domain.Task, error) {
 		return gen.Generate(), nil
 
 	case SuiteModeLive:
-		// When live MCP command is provided, fall back to synthetic template baseline with realistic tool load
 		if strings.TrimSpace(m.liveCmdInput.Value()) == "" {
 			return nil, fmt.Errorf("MCP command is required for live server benchmark")
 		}
@@ -316,10 +322,11 @@ func (m SuiteStepModel) View() string {
 
 	// Suite mode tabs
 	modes := []string{
-		"[1] Pre-annotated Templates",
-		"[2] Synthetic Generator",
-		"[3] Live MCP Server",
-		"[4] Custom JSON File",
+		"[1] Full Factorial Matrix (synthetic_v1)",
+		"[2] MCP Templates",
+		"[3] Synthetic Generator",
+		"[4] Live MCP Server",
+		"[5] Custom JSON File",
 	}
 	var modePills []string
 	for i, name := range modes {
@@ -332,6 +339,8 @@ func (m SuiteStepModel) View() string {
 	b.WriteString(strings.Join(modePills, " ") + "\n\n")
 
 	switch m.mode {
+	case SuiteModeStandard:
+		b.WriteString(m.renderStandardView())
 	case SuiteModeTemplates:
 		b.WriteString(m.renderTemplatesView())
 	case SuiteModeGenerator:
@@ -346,8 +355,55 @@ func (m SuiteStepModel) View() string {
 		b.WriteString("\n" + StyleError.Render("⚠ "+m.errMessage) + "\n")
 	}
 
-	b.WriteString("\n" + StyleHelp.Render("Controls: [1-4] Switch tab • [Tab/↑↓] Navigate • [Space] Toggle • [Enter] Next • [Esc] Back"))
+	b.WriteString("\n" + StyleHelp.Render("Controls: [1-5] Switch tab • [Tab/↑↓] Navigate • [Space] Toggle • [Enter] Next • [Esc] Back"))
 	return b.String()
+}
+
+func (m SuiteStepModel) renderStandardView() string {
+	builtin := suite.Builtin()
+	var rows []string
+	rows = append(rows, StyleSectionTitle.Render("Canonical Full Factorial Benchmark Suite (synthetic_v1):"))
+	rows = append(rows, StyleSubtitle.Render(fmt.Sprintf("Standard %d-task benchmark suite engineered to detect compression failure cliffs.", len(builtin))))
+	rows = append(rows, "")
+
+	var ambCount, overlapCount, hopCount int
+	for _, t := range builtin {
+		switch t.Category {
+		case domain.CategoryAmbiguousName:
+			ambCount++
+		case domain.CategoryOverlappingSchem:
+			overlapCount++
+		case domain.CategoryMultiHop:
+			hopCount++
+		}
+	}
+
+	rows = append(rows, fmt.Sprintf("  %s %s (%d tasks)",
+		StyleSuccess.Render("●"),
+		StyleLabel.Render("Ambiguous Tool Names:"),
+		ambCount,
+	))
+	rows = append(rows, "    Hallucination resistance across similar tool names (e.g. search_issues vs list_issues).")
+	rows = append(rows, "")
+
+	rows = append(rows, fmt.Sprintf("  %s %s (%d tasks)",
+		StyleSuccess.Render("●"),
+		StyleLabel.Render("Overlapping Schema Signatures:"),
+		overlapCount,
+	))
+	rows = append(rows, "    Parameter type and enum binding accuracy when schema descriptions are heavily compressed.")
+	rows = append(rows, "")
+
+	rows = append(rows, fmt.Sprintf("  %s %s (%d tasks)",
+		StyleSuccess.Render("●"),
+		StyleLabel.Render("Multi-Hop Dependency Chains:"),
+		hopCount,
+	))
+	rows = append(rows, "    Chained tool calls with threaded output variables (e.g. session_id, issue_key).")
+	rows = append(rows, "")
+
+	rows = append(rows, StyleHelp.Render(fmt.Sprintf("Full Matrix Size: %d tasks × 5 compression levels = %d factorial evaluation cells.", len(builtin), len(builtin)*5)))
+	return strings.Join(rows, "\n")
 }
 
 func (m SuiteStepModel) renderTemplatesView() string {

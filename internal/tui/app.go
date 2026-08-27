@@ -9,6 +9,7 @@ import (
 
 	"can-i-compress-it/internal/domain"
 	"can-i-compress-it/internal/inference"
+	"can-i-compress-it/internal/suite"
 )
 
 // WizardStep represents the active wizard state.
@@ -79,6 +80,16 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.quitting = true
 			return m, tea.Quit
+
+		case "ctrl+f":
+			if m.step != StepRunning {
+				return m.runFullFactorial()
+			}
+
+		case "f", "F":
+			if m.step == StepResults || (m.step == StepProvider && m.providerStep.focused == focusPreset) {
+				return m.runFullFactorial()
+			}
 
 		case "q", "Q":
 			if m.step == StepResults {
@@ -189,6 +200,25 @@ func (m AppModel) handleAdvance() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// runFullFactorial directly executes the canonical 60-cell full factorial matrix (synthetic_v1 across all 5 levels).
+func (m AppModel) runFullFactorial() (tea.Model, tea.Cmd) {
+	if err := m.providerStep.Validate(); err != nil {
+		m.providerStep.errMessage = err.Error()
+		m.step = StepProvider
+		return m, nil
+	}
+	m.resolvedTasks = suite.Builtin()
+	m.selectedLevels = domain.AllLevels
+	m.step = StepRunning
+	m.runningView = NewRunningViewModel()
+	if m.width > 0 {
+		m.runningView.SetSize(m.width, m.height)
+	}
+	m.runningView.totalCells = len(m.resolvedTasks) * len(m.selectedLevels)
+
+	return m.startExecution()
+}
+
 func (m AppModel) startExecution() (tea.Model, tea.Cmd) {
 	var model inference.Model
 	modelName := strings.TrimSpace(m.providerStep.modelInput.Value())
@@ -213,7 +243,7 @@ func (m AppModel) startExecution() (tea.Model, tea.Cmd) {
 		m.selectedLevels,
 		compressorBin,
 		paramsB,
-		"wizard-suite",
+		"synthetic_v1",
 		endpoint,
 		jsonPath,
 		htmlPath,

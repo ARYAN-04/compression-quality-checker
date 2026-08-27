@@ -128,6 +128,12 @@ func (m CompressionStepModel) Update(msg tea.Msg) (CompressionStepModel, tea.Cmd
 				return m, nil
 			}
 
+		case "a", "A":
+			for i := range m.levels {
+				m.levels[i].Selected = true
+			}
+			return m, nil
+
 		case " ":
 			if m.focusedField == focusLevels {
 				m.levels[m.levelIdx].Selected = !m.levels[m.levelIdx].Selected
@@ -285,6 +291,6 @@ func (m CompressionStepModel) View() string {
 		b.WriteString("\n" + StyleError.Render("⚠ "+m.errMessage) + "\n")
 	}
 
-	b.WriteString("\n" + StyleHelp.Render("Controls: [Tab/↑↓] Navigate • [Space] Toggle • [Enter] Start Benchmark • [Esc] Back"))
+	b.WriteString("\n" + StyleHelp.Render("Controls: [Tab/↑↓] Navigate • [Space] Toggle • [A] Select All Levels • [Enter] Start Benchmark • [Esc] Back"))
 	return b.String()
 }

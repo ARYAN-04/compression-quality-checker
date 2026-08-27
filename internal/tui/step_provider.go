@@ -24,12 +24,20 @@ type ProviderPreset struct {
 // Available provider presets.
 var defaultPresets = []ProviderPreset{
 	{
+		Name:           "LM Studio",
+		Endpoint:       "http://localhost:1234/v1",
+		DefaultModel:   "qwen2.5-7b-instruct",
+		DefaultParamsB: 7.0,
+		RequiresAPIKey: false,
+		Description:    "Local or remote LM Studio inference server (/v1)",
+	},
+	{
 		Name:           "Ollama",
 		Endpoint:       "http://localhost:11434/v1",
 		DefaultModel:   "llama3.1:8b",
 		DefaultParamsB: 8.0,
 		RequiresAPIKey: false,
-		Description:    "Local Ollama daemon",
+		Description:    "Local Ollama daemon (/v1)",
 	},
 	{
 		Name:           "vLLM",
@@ -38,14 +46,6 @@ var defaultPresets = []ProviderPreset{
 		DefaultParamsB: 8.0,
 		RequiresAPIKey: false,
 		Description:    "High-throughput local vLLM server",
-	},
-	{
-		Name:           "LM Studio",
-		Endpoint:       "http://localhost:1234/v1",
-		DefaultModel:   "qwen2.5-7b-instruct",
-		DefaultParamsB: 7.0,
-		RequiresAPIKey: false,
-		Description:    "Local LM Studio local inference server",
 	},
 	{
 		Name:           "OpenAI / OpenRouter",
@@ -113,7 +113,7 @@ func NewProviderStepModel() ProviderStepModel {
 	m.modelInput.PromptStyle = StyleLabel
 	m.modelInput.Focus()
 
-	m.endpointInput.Placeholder = "http://localhost:11434/v1"
+	m.endpointInput.Placeholder = "http://localhost:1234/v1 or http://<ip>:1234"
 	m.endpointInput.Prompt = "Endpoint URL:   "
 	m.endpointInput.PromptStyle = StyleLabel
 
@@ -318,10 +318,13 @@ func (m ProviderStepModel) View() string {
 	b.WriteString("  " + m.apiKeyInput.View() + "\n")
 	b.WriteString("  " + m.paramsInput.View() + "\n")
 
+	b.WriteString("\n" + StyleSectionTitle.Render("Execution Shortcuts:") + "\n")
+	b.WriteString("  " + StyleActiveItem.Render("🚀 [F] Run Full Factorial Benchmark (All 5 Levels)") + "  " + StyleSubtitle.Render("[Enter] Configure Wizard Steps") + "\n")
+
 	if m.errMessage != "" {
 		b.WriteString("\n" + StyleError.Render("⚠ "+m.errMessage) + "\n")
 	}
 
-	b.WriteString("\n" + StyleHelp.Render("Controls: [Tab/Shift+Tab] Navigate • [←/→] Switch preset • [Enter] Next Step • [Ctrl+C] Exit"))
+	b.WriteString("\n" + StyleHelp.Render("Controls: [Tab/Shift+Tab] Navigate • [←/→] Switch preset • [F] Quick Full Factorial • [Enter] Next Step • [Ctrl+C] Exit"))
 	return b.String()
 }
