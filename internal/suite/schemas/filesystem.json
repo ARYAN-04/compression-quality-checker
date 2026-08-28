@@ -1,0 +1,131 @@
+{
+  "tools": [
+    {
+      "name": "list_directory",
+      "description": "List the contents of a directory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Directory path to list."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "read_file",
+      "description": "Read the complete contents of a single file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path of the file to read."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "search_files",
+      "description": "Recursively search for files matching a pattern.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Root directory to start the search from."
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Pattern to match file names against."
+          }
+        },
+        "required": [
+          "path",
+          "pattern"
+        ]
+      }
+    },
+    {
+      "name": "write_file",
+      "description": "Create or overwrite a file with the given contents.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path of the file to write."
+          },
+          "content": {
+            "type": "string",
+            "description": "Full contents to write to the file."
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "move_file",
+      "description": "Move or rename a file to a new location.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Path of the file to move."
+          },
+          "destination": {
+            "type": "string",
+            "description": "New path for the file."
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ]
+      }
+    },
+    {
+      "name": "get_file_info",
+      "description": "Get metadata about a file such as size and modification time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path of the file to inspect."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "delete_file",
+      "description": "Permanently delete a file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path of the file to delete."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    }
+  ]
+}

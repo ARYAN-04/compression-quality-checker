@@ -22,6 +22,7 @@ var suiteGenFlags struct {
 	distractors int
 	seed        int64
 	out         string
+	fromSchema  string
 }
 
 var suiteCmd = &cobra.Command{
@@ -31,8 +32,25 @@ var suiteCmd = &cobra.Command{
 
 var suiteGenerateCmd = &cobra.Command{
 	Use:   "generate",
-	Short: "Synthesize a task suite with parameterized ambiguity",
+	Short: "Synthesize a task suite with parameterized ambiguity or from a schema file",
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		if suiteGenFlags.fromSchema != "" {
+			tasks, err := suite.FromSchemaFile(suiteGenFlags.fromSchema)
+			if err != nil {
+				return err
+			}
+			out := suiteGenFlags.out
+			if out == "" {
+				out = fmt.Sprintf("./suites/from_schema_%s.json", sanitizeName(suiteGenFlags.fromSchema))
+			}
+			if err := suite.Save(out, tasks); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "generated %d tasks from schema %s to %s\n",
+				len(tasks), suiteGenFlags.fromSchema, out)
+			return nil
+		}
+
 		switch suiteGenFlags.ambiguity {
 		case "none", "low", "high":
 		default:
@@ -66,14 +84,14 @@ var suiteGenerateCmd = &cobra.Command{
 }
 
 var suiteImportFlags struct {
-	template string
-	out      string
+	template   string
+	out        string
+	fromSchema string
 }
 
 var suiteImportCmd = &cobra.Command{
-	Use:   "import -- <server command...>",
-	Short: "Import a suite from a live MCP server's tool schemas",
-	Args:  cobra.MinimumNArgs(1),
+	Use:   "import [--from-schema <file>] [-- <server command...>]",
+	Short: "Import a suite from an MCP schema file or a live MCP server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if suiteImportFlags.template != "" {
 			if _, ok := suite.Template(suiteImportFlags.template); !ok {
@@ -81,6 +99,34 @@ var suiteImportCmd = &cobra.Command{
 					suiteImportFlags.template, strings.Join(suite.TemplateNames(), ", "))
 			}
 		}
+
+		if suiteImportFlags.fromSchema != "" {
+			tasks, err := suite.FromSchemaFile(suiteImportFlags.fromSchema)
+			if err != nil {
+				return err
+			}
+			tools, _ := suite.ParseSchemaTools([]byte{}) // extract tools from loaded tasks
+			tools = suite.UniqueTools(tasks)
+			if suiteImportFlags.template != "" {
+				annotated, _ := suite.Template(suiteImportFlags.template)
+				tasks = mergeTemplate(tasks, annotated, tools)
+			}
+			out := suiteImportFlags.out
+			if out == "" {
+				out = fmt.Sprintf("./suites/imported_%s.json", sanitizeName(suiteImportFlags.fromSchema))
+			}
+			if err := suite.Save(out, tasks); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "imported %d tools as %d tasks from schema %s to %s\n",
+				len(tools), len(tasks), suiteImportFlags.fromSchema, out)
+			return nil
+		}
+
+		if len(args) == 0 {
+			return fmt.Errorf("requires either a server command (e.g. suite import -- <cmd>) or --from-schema <file>")
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 
@@ -206,10 +252,15 @@ func init() {
 	fs.IntVar(&suiteGenFlags.distractors, "distractors", 0, "filler tools padded into every catalogue (10-90, 0 disables)")
 	fs.Int64Var(&suiteGenFlags.seed, "seed", int64(time.Now().UnixNano()), "RNG seed for reproducibility")
 	fs.StringVarP(&suiteGenFlags.out, "out", "o", "", "output suite path")
+	fs.StringVar(&suiteGenFlags.fromSchema, "from-schema", "", "generate tasks from an MCP schema JSON file")
+	fs.StringVar(&suiteGenFlags.fromSchema, "schema", "", "alias for --from-schema")
 
 	suiteCmd.AddCommand(suiteImportCmd)
 	ifs := suiteImportCmd.Flags()
 	ifs.StringVar(&suiteImportFlags.template, "template", "",
-		"merge pre-annotated tasks for a standard server: github|sqlite|filesystem")
+		"merge pre-annotated tasks for a standard server: github|jira|slack|sqlite|filesystem|postgres|memory|fetch|brave-search|puppeteer|git")
+	ifs.StringVar(&suiteImportFlags.fromSchema, "from-schema", "",
+		"import tools directly from an MCP JSON schema file without running a server")
+	ifs.StringVar(&suiteImportFlags.fromSchema, "schema", "", "alias for --from-schema")
 	ifs.StringVarP(&suiteImportFlags.out, "out", "o", "", "output suite path")
 }

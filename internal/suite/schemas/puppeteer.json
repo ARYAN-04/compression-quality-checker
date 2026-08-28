@@ -1,0 +1,97 @@
+{
+  "tools": [
+    {
+      "name": "navigate",
+      "description": "Navigate the browser to a specific URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL to navigate to."
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "screenshot",
+      "description": "Take a screenshot of the current page or a specific element.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name or identifier for the screenshot image file."
+          },
+          "width": {
+            "type": "integer",
+            "description": "Viewport width in pixels."
+          },
+          "height": {
+            "type": "integer",
+            "description": "Viewport height in pixels."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "click",
+      "description": "Click an element on the page specified by a CSS selector.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string",
+            "description": "CSS selector of the element to click."
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "fill",
+      "description": "Fill out an input field on the page with text.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string",
+            "description": "CSS selector of the input element."
+          },
+          "value": {
+            "type": "string",
+            "description": "Text value to fill into the input."
+          }
+        },
+        "required": [
+          "selector",
+          "value"
+        ]
+      }
+    },
+    {
+      "name": "evaluate",
+      "description": "Execute JavaScript code in the browser page context.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "script": {
+            "type": "string",
+            "description": "JavaScript code string to evaluate."
+          }
+        },
+        "required": [
+          "script"
+        ]
+      }
+    }
+  ]
+}

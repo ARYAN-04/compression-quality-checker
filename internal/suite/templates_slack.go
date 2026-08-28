@@ -47,12 +47,21 @@ func slackAddReaction() domain.ToolDefinition {
 	return t
 }
 
+func slackListUsers() domain.ToolDefinition {
+	t := tool("list_users", "List users in the Slack workspace.")
+	t.Parameters = params(map[string]any{
+		"limit": obj("integer", "Number of users to retrieve."),
+	})
+	return t
+}
+
 func slackTasks() []domain.Task {
 	listChannels := slackListChannels()
 	postMessage := slackPostMessage()
 	history := slackChannelHistory()
 	replyThread := slackReplyThread()
 	addReaction := slackAddReaction()
+	listUsers := slackListUsers()
 	return []domain.Task{
 		{
 			ID:       "sl_list_channels_001",
@@ -60,6 +69,13 @@ func slackTasks() []domain.Task {
 			Prompt:   "Call list_channels exactly once with no arguments.",
 			Tools:    []domain.ToolDefinition{listChannels, history},
 			Expected: expected("list_channels", map[string]any{}),
+		},
+		{
+			ID:       "sl_list_users_001",
+			Category: domain.CategoryImported,
+			Prompt:   "Call list_users exactly once. Arguments: limit: 20.",
+			Tools:    []domain.ToolDefinition{listUsers, listChannels},
+			Expected: expected("list_users", map[string]any{"limit": int64(20)}),
 		},
 		{
 			ID:       "sl_post_message_001",

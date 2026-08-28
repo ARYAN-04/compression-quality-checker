@@ -1,0 +1,79 @@
+{
+  "tools": [
+    {
+      "name": "list_schemas",
+      "description": "List all schemas in the PostgreSQL database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "list_tables",
+      "description": "List tables in a PostgreSQL schema.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "schema": {
+            "type": "string",
+            "description": "Schema name to inspect (defaults to public)."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "describe_table",
+      "description": "Describe table columns, data types, and constraints.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "table_name": {
+            "type": "string",
+            "description": "Name of the table to describe."
+          },
+          "schema": {
+            "type": "string",
+            "description": "Schema containing the table."
+          }
+        },
+        "required": [
+          "table_name"
+        ]
+      }
+    },
+    {
+      "name": "execute_query",
+      "description": "Execute a data modification SQL query (INSERT, UPDATE, DELETE).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "SQL write statement to execute."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "read_query",
+      "description": "Execute a read-only SQL query (SELECT).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "SQL SELECT query to execute."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ]
+}

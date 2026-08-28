@@ -6,25 +6,48 @@ import (
 
 // TemplateNames lists the pre-annotated standard MCP servers.
 func TemplateNames() []string {
-	return []string{"github", "sqlite", "filesystem", "jira", "slack"}
+	return []string{
+		"github",
+		"jira",
+		"slack",
+		"sqlite",
+		"filesystem",
+		"postgres",
+		"memory",
+		"fetch",
+		"brave-search",
+		"puppeteer",
+		"git",
+	}
 }
 
 // Template returns pre-annotated benchmark tasks for a standard MCP
-// server ("github", "sqlite", "filesystem", "jira", "slack"). Ground
-// truth matches the upstream @modelcontextprotocol server tool names
-// and input schemas.
+// server. Ground truth matches the upstream @modelcontextprotocol server
+// tool names and input schemas.
 func Template(name string) ([]domain.Task, bool) {
 	switch name {
 	case "github":
 		return githubTasks(), true
-	case "sqlite":
-		return sqliteTasks(), true
-	case "filesystem":
-		return filesystemTasks(), true
 	case "jira":
 		return jiraTasks(), true
 	case "slack":
 		return slackTasks(), true
+	case "sqlite":
+		return sqliteTasks(), true
+	case "filesystem":
+		return filesystemTasks(), true
+	case "postgres":
+		return postgresTasks(), true
+	case "memory":
+		return memoryTasks(), true
+	case "fetch":
+		return fetchTasks(), true
+	case "brave-search":
+		return braveSearchTasks(), true
+	case "puppeteer":
+		return puppeteerTasks(), true
+	case "git":
+		return gitTasks(), true
 	default:
 		return nil, false
 	}
@@ -261,6 +284,13 @@ func filesystemTasks() []domain.Task {
 			Prompt:   "Call get_file_info exactly once. Arguments: path: /srv/projects/build.log. Do not read the file contents.",
 			Tools:    []domain.ToolDefinition{getFileInfo, readFile},
 			Expected: expected("get_file_info", map[string]any{"path": "/srv/projects/build.log"}),
+		},
+		{
+			ID:       "fs_write_file_001",
+			Category: domain.CategoryImported,
+			Prompt:   "Call write_file exactly once. Arguments: content: {\"status\":\"ok\"}, path: /srv/projects/status.json.",
+			Tools:    []domain.ToolDefinition{writeFile, readFile},
+			Expected: expected("write_file", map[string]any{"content": "{\"status\":\"ok\"}", "path": "/srv/projects/status.json"}),
 		},
 		{
 			ID:       "fs_delete_file_001",

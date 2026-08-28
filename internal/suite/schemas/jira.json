@@ -1,0 +1,111 @@
+{
+  "tools": [
+    {
+      "name": "get_issue",
+      "description": "Get full details of a single Jira issue by its key.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as ACME-42."
+          }
+        },
+        "required": [
+          "issue_key"
+        ]
+      }
+    },
+    {
+      "name": "create_issue",
+      "description": "Create a new issue in a Jira project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_key": {
+            "type": "string",
+            "description": "Key of the project that receives the issue."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Short one-line summary of the issue."
+          },
+          "description": {
+            "type": "string",
+            "description": "Long-form description of the issue."
+          },
+          "issue_type": {
+            "type": "string",
+            "description": "Issue type such as Bug, Task, or Story."
+          }
+        },
+        "required": [
+          "project_key",
+          "summary"
+        ]
+      }
+    },
+    {
+      "name": "update_issue_status",
+      "description": "Transition an issue to a new workflow status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key to transition."
+          },
+          "status": {
+            "type": "string",
+            "description": "Target workflow status such as In Review."
+          }
+        },
+        "required": [
+          "issue_key",
+          "status"
+        ]
+      }
+    },
+    {
+      "name": "add_comment",
+      "description": "Add a comment to an existing Jira issue.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key receiving the comment."
+          },
+          "body": {
+            "type": "string",
+            "description": "Comment text to append to the issue."
+          }
+        },
+        "required": [
+          "issue_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "search_issues_jql",
+      "description": "Search Jira issues using a JQL query string.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jql": {
+            "type": "string",
+            "description": "JQL query selecting the issues to return."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Maximum number of issues to return."
+          }
+        },
+        "required": [
+          "jql"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,209 @@
+{
+  "tools": [
+    {
+      "name": "get_issue",
+      "description": "Get details of a specific issue in a GitHub repository.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner login."
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name."
+          },
+          "issue_number": {
+            "type": "integer",
+            "description": "Issue number to fetch."
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "issue_number"
+        ]
+      }
+    },
+    {
+      "name": "list_issues",
+      "description": "List issues in a GitHub repository.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner login."
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name."
+          },
+          "state": {
+            "type": "string",
+            "description": "Filter by issue state: open, closed, or all."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter by comma-separated label names."
+          }
+        },
+        "required": [
+          "owner",
+          "repo"
+        ]
+      }
+    },
+    {
+      "name": "create_issue",
+      "description": "Create a new issue in a GitHub repository.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner login."
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name."
+          },
+          "title": {
+            "type": "string",
+            "description": "Title of the new issue."
+          },
+          "body": {
+            "type": "string",
+            "description": "Body text of the new issue."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Labels to attach to the issue."
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "get_pull_request",
+      "description": "Get details of a specific pull request in a GitHub repository.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner login."
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name."
+          },
+          "pull_number": {
+            "type": "integer",
+            "description": "Pull request number to fetch."
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "pull_number"
+        ]
+      }
+    },
+    {
+      "name": "list_commits",
+      "description": "List commits in a GitHub repository.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner login."
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name."
+          },
+          "sha": {
+            "type": "string",
+            "description": "Optional branch or commit SHA to start listing from."
+          },
+          "path": {
+            "type": "string",
+            "description": "Filter commits by file path."
+          }
+        },
+        "required": [
+          "owner",
+          "repo"
+        ]
+      }
+    },
+    {
+      "name": "create_pull_request_comment",
+      "description": "Post a comment on a GitHub pull request.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner login."
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name."
+          },
+          "pull_number": {
+            "type": "integer",
+            "description": "Pull request number to comment on."
+          },
+          "body": {
+            "type": "string",
+            "description": "Comment text to post."
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "pull_number",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "search_repositories",
+      "description": "Search for GitHub repositories by query.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query using GitHub search syntax."
+          },
+          "sort": {
+            "type": "string",
+            "description": "Sort field: stars, forks, or updated."
+          },
+          "order": {
+            "type": "string",
+            "description": "Sort direction: asc or desc."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ]
+}

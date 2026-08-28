@@ -1,0 +1,100 @@
+{
+  "tools": [
+    {
+      "name": "git_status",
+      "description": "Show the working tree status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": {
+            "type": "string",
+            "description": "Path to the git repository."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "git_diff",
+      "description": "Show changes between commits, commit and working tree, etc.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": {
+            "type": "string",
+            "description": "Path to the git repository."
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "View staged changes."
+          },
+          "target": {
+            "type": "string",
+            "description": "Target branch or commit SHA to compare against."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "git_commit",
+      "description": "Record changes to the repository.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Commit message describing the changes."
+          },
+          "repo_path": {
+            "type": "string",
+            "description": "Path to the git repository."
+          },
+          "all": {
+            "type": "boolean",
+            "description": "Automatically stage modified and deleted files."
+          }
+        },
+        "required": [
+          "message"
+        ]
+      }
+    },
+    {
+      "name": "git_log",
+      "description": "Show commit logs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": {
+            "type": "string",
+            "description": "Path to the git repository."
+          },
+          "max_count": {
+            "type": "integer",
+            "description": "Maximum number of commit entries to return."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "git_branch",
+      "description": "List, create, or inspect git branches.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": {
+            "type": "string",
+            "description": "Path to the git repository."
+          },
+          "branch_name": {
+            "type": "string",
+            "description": "Branch name to create or switch to."
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}

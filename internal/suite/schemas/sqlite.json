@@ -1,0 +1,61 @@
+{
+  "tools": [
+    {
+      "name": "list_tables",
+      "description": "List all tables in the SQLite database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "describe_table",
+      "description": "Describe the columns of a specific table.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "table_name": {
+            "type": "string",
+            "description": "Name of the table to describe."
+          }
+        },
+        "required": [
+          "table_name"
+        ]
+      }
+    },
+    {
+      "name": "read_query",
+      "description": "Execute a read-only SQL SELECT query.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "SQL SELECT query to execute."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "execute_query",
+      "description": "Execute a write SQL statement such as INSERT or UPDATE.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "SQL write statement to execute."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ]
+}

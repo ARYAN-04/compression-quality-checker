@@ -1,0 +1,48 @@
+{
+  "tools": [
+    {
+      "name": "brave_web_search",
+      "description": "Performs a web search using the Brave Search API, returning relevant web pages.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query keywords."
+          },
+          "count": {
+            "type": "integer",
+            "description": "Number of search results to return (default 10)."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Pagination offset."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "brave_local_search",
+      "description": "Searches for local businesses and places using the Brave Local Search API.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Local search query (e.g. coffee shops near Seattle)."
+          },
+          "count": {
+            "type": "integer",
+            "description": "Number of local results to return."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ]
+}

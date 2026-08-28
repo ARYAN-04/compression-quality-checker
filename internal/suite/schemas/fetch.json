@@ -1,0 +1,60 @@
+{
+  "tools": [
+    {
+      "name": "fetch",
+      "description": "Fetch content from a web URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL to fetch."
+          },
+          "max_length": {
+            "type": "integer",
+            "description": "Maximum character length of content to return."
+          },
+          "raw": {
+            "type": "boolean",
+            "description": "Return raw HTML instead of converted markdown text."
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "extract_markdown",
+      "description": "Fetch and convert web page content to cleaned markdown.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL of the page to extract markdown from."
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "extract_headers",
+      "description": "Inspect HTTP response headers for a URL without downloading full body.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL to inspect."
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    }
+  ]
+}

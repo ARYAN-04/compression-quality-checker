@@ -1,0 +1,127 @@
+{
+  "tools": [
+    {
+      "name": "create_entities",
+      "description": "Create multiple new entities in the knowledge graph.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Name of the entity."
+                },
+                "entityType": {
+                  "type": "string",
+                  "description": "Type/category of the entity."
+                },
+                "observations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Observations or facts about the entity."
+                }
+              },
+              "required": [
+                "name",
+                "entityType",
+                "observations"
+              ]
+            },
+            "description": "List of entities to create."
+          }
+        },
+        "required": [
+          "entities"
+        ]
+      }
+    },
+    {
+      "name": "open_nodes",
+      "description": "Open and retrieve specific nodes in the knowledge graph by name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of nodes to retrieve."
+          }
+        },
+        "required": [
+          "names"
+        ]
+      }
+    },
+    {
+      "name": "create_relations",
+      "description": "Create directional relations between existing entities in the graph.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "relations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "description": "Source entity name."
+                },
+                "to": {
+                  "type": "string",
+                  "description": "Target entity name."
+                },
+                "relationType": {
+                  "type": "string",
+                  "description": "Relationship type label."
+                }
+              },
+              "required": [
+                "from",
+                "to",
+                "relationType"
+              ]
+            },
+            "description": "List of relations to establish."
+          }
+        },
+        "required": [
+          "relations"
+        ]
+      }
+    },
+    {
+      "name": "search_nodes",
+      "description": "Search for nodes in the knowledge graph matching a query.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search term matching node names, types, or observations."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "read_graph",
+      "description": "Read the entire knowledge graph structure.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  ]
+}
