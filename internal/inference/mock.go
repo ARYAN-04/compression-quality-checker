@@ -41,7 +41,7 @@ var argRe = regexp.MustCompile(`\b([a-z_]+):\s*(<from:[^>]*>|(?:[^,;\n.]|\.[\w/@
 func (m *Mock) Chat(_ context.Context, msgs []Message, tools []domain.ToolDefinition) (Response, error) {
 	prompt := lastUserPrompt(msgs)
 	if isMetaCatalogue(tools) {
-		return m.metaTurn(msgs, prompt)
+		return m.metaTurn(msgs, prompt, tools)
 	}
 	if snakeRe.MatchString(prompt) {
 		return m.explicitTurn(msgs, prompt, tools)
@@ -178,30 +178,45 @@ func (m *Mock) bindIntentArgs(prompt string, t domain.ToolDefinition, msgs []Mes
 // metaTurn performs the two-step get_tool_schema then invoke_tool flow,
 // degrading exactly like small models do: some fraction of tasks skip
 // the schema fetch and lose the ability to thread intermediate values.
-func (m *Mock) metaTurn(msgs []Message, prompt string) (Response, error) {
+func (m *Mock) metaTurn(msgs []Message, prompt string, tools []domain.ToolDefinition) (Response, error) {
+	getSchemaTool, invokeTool := findMetaTools(tools)
 	target := metaTarget(prompt, msgs)
-	if !assistantCalled(msgs, mcp.MetaGetSchema) {
+	if !assistantCalledMeta(msgs, "get_tool_schema") {
 		if m.skipSchemaFetch(prompt) {
 			args := m.metaInvokeArgs(prompt, target, msgs)
 			return Response{
-				ToolCalls: []domain.ToolCall{{Name: mcp.MetaInvoke, Arguments: map[string]any{
-					"tool_name": target, "arguments": args,
+				ToolCalls: []domain.ToolCall{{Name: invokeTool, Arguments: map[string]any{
+					"tool_name": target, "arguments": args, "tool_input": args,
 				}}},
 				TokensUsed: 45,
 			}, nil
 		}
 		return Response{
-			ToolCalls:  []domain.ToolCall{{Name: mcp.MetaGetSchema, Arguments: map[string]any{"tool_name": target}}},
+			ToolCalls:  []domain.ToolCall{{Name: getSchemaTool, Arguments: map[string]any{"tool_name": target}}},
 			TokensUsed: 30,
 		}, nil
 	}
 	args := m.metaInvokeArgs(prompt, target, msgs)
 	return Response{
-		ToolCalls: []domain.ToolCall{{Name: mcp.MetaInvoke, Arguments: map[string]any{
-			"tool_name": target, "arguments": args,
+		ToolCalls: []domain.ToolCall{{Name: invokeTool, Arguments: map[string]any{
+			"tool_name": target, "arguments": args, "tool_input": args,
 		}}},
 		TokensUsed: 60,
 	}, nil
+}
+
+func findMetaTools(tools []domain.ToolDefinition) (getSchema, invoke string) {
+	getSchema = mcp.MetaGetSchema
+	invoke = mcp.MetaInvoke
+	for _, t := range tools {
+		if strings.Contains(t.Name, "get_tool_schema") {
+			getSchema = t.Name
+		}
+		if strings.Contains(t.Name, "invoke_tool") {
+			invoke = t.Name
+		}
+	}
+	return getSchema, invoke
 }
 
 // metaTarget picks the next tool referenced by the prompt that has not
@@ -290,7 +305,7 @@ func (m *Mock) skipSchemaFetch(prompt string) bool {
 
 func isMetaCatalogue(tools []domain.ToolDefinition) bool {
 	for _, t := range tools {
-		if t.Name == mcp.MetaGetSchema {
+		if strings.Contains(t.Name, "get_tool_schema") || strings.Contains(t.Name, "invoke_tool") {
 			return true
 		}
 	}
@@ -600,12 +615,16 @@ func assistantCalled(msgs []Message, tool string) bool {
 			continue
 		}
 		for _, tc := range msg.ToolCalls {
-			if tc.Function.Name == tool {
+			if tc.Function.Name == tool || strings.Contains(tc.Function.Name, tool) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func assistantCalledMeta(msgs []Message, substr string) bool {
+	return assistantCalled(msgs, substr)
 }
 
 func countAssistantCalls(msgs []Message) int {
@@ -628,17 +647,17 @@ func invokedTools(msgs []Message) []string {
 			continue
 		}
 		for _, tc := range msg.ToolCalls {
-			switch tc.Function.Name {
-			case mcp.MetaGetSchema:
+			if strings.Contains(tc.Function.Name, "get_tool_schema") {
 				continue
-			case mcp.MetaInvoke:
+			}
+			if strings.Contains(tc.Function.Name, "invoke_tool") {
 				var args struct {
 					ToolName string `json:"tool_name"`
 				}
 				if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err == nil && args.ToolName != "" {
 					out = append(out, args.ToolName)
 				}
-			default:
+			} else {
 				out = append(out, tc.Function.Name)
 			}
 		}

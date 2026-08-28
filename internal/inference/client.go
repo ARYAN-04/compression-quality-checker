@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,10 +111,11 @@ type openAIFunctionCall struct {
 }
 
 type chatRequest struct {
-	Model    string       `json:"model"`
-	Messages []Message    `json:"messages"`
-	Tools    []openAITool `json:"tools,omitempty"`
-	Stream   bool         `json:"stream"`
+	Model      string       `json:"model"`
+	Messages   []Message    `json:"messages"`
+	Tools      []openAITool `json:"tools,omitempty"`
+	ToolChoice string       `json:"tool_choice,omitempty"`
+	Stream     bool         `json:"stream"`
 }
 
 type openAITool struct {
@@ -139,6 +141,9 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tools []domain.ToolDe
 				Parameters:  t.Parameters,
 			},
 		})
+	}
+	if len(req.Tools) > 0 {
+		req.ToolChoice = "auto"
 	}
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -193,17 +198,19 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tools []domain.ToolDe
 				if id == "" {
 					id = fmt.Sprintf("call_%s", tc.Function.Name)
 				}
+				name := normalizeName(tc.Function.Name)
 				out.ToolCalls = append(out.ToolCalls, domain.ToolCall{
 					ID:        id,
-					Name:      tc.Function.Name,
+					Name:      name,
 					Arguments: args,
 				})
 			}
 		} else if msg.FunctionCall != nil && msg.FunctionCall.Name != "" {
 			args := parseArguments(msg.FunctionCall.Arguments)
+			name := normalizeName(msg.FunctionCall.Name)
 			out.ToolCalls = append(out.ToolCalls, domain.ToolCall{
-				ID:        fmt.Sprintf("call_%s", msg.FunctionCall.Name),
-				Name:      msg.FunctionCall.Name,
+				ID:        fmt.Sprintf("call_%s", name),
+				Name:      name,
 				Arguments: args,
 			})
 		} else if out.Content != "" {
@@ -247,12 +254,14 @@ func parseArguments(raw json.RawMessage) map[string]any {
 func extractTextToolCalls(content string) []domain.ToolCall {
 	var out []domain.ToolCall
 
-	// Pattern 1: <tool_call> JSON </tool_call>
+	// Pattern 1: <tool_call> JSON or code </tool_call>
 	toolCallTagRe := regexp.MustCompile(`(?s)<tool_call>\s*(.*?)\s*</tool_call>`)
 	if matches := toolCallTagRe.FindAllStringSubmatch(content, -1); len(matches) > 0 {
 		for _, m := range matches {
 			if call, ok := parseJSONToolCall(m[1]); ok {
 				out = append(out, call)
+			} else if calls := parseCodeToolCalls(m[1]); len(calls) > 0 {
+				out = append(out, calls...)
 			}
 		}
 		if len(out) > 0 {
@@ -260,25 +269,43 @@ func extractTextToolCalls(content string) []domain.ToolCall {
 		}
 	}
 
-	// Pattern 2: <function=name>args_json</function>
+	// Pattern 2: [TOOL_CALLS] ... (Mistral / Hermes / Command-R format)
+	toolCallsTagRe := regexp.MustCompile(`(?s)\[TOOL_CALLS\]\s*(.*?)(?:\[/TOOL_CALLS\]|$)`)
+	if matches := toolCallsTagRe.FindAllStringSubmatch(content, -1); len(matches) > 0 {
+		for _, m := range matches {
+			if calls := parseJSONOrArrayCalls(m[1]); len(calls) > 0 {
+				out = append(out, calls...)
+			} else if calls := parseCodeToolCalls(m[1]); len(calls) > 0 {
+				out = append(out, calls...)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+
+	// Pattern 3: <function=name>args</function>
 	funcTagRe := regexp.MustCompile(`(?s)<function=([a-zA-Z0-9_\-]+)>\s*(.*?)\s*</function>`)
 	if matches := funcTagRe.FindAllStringSubmatch(content, -1); len(matches) > 0 {
 		for _, m := range matches {
+			name := normalizeName(m[1])
+			argsStr := strings.TrimSpace(m[2])
 			var args map[string]any
-			if err := json.Unmarshal([]byte(m[2]), &args); err == nil {
-				out = append(out, domain.ToolCall{
-					ID:        fmt.Sprintf("call_%s", m[1]),
-					Name:      m[1],
-					Arguments: args,
-				})
+			if err := json.Unmarshal([]byte(argsStr), &args); err != nil {
+				args = parseCodeArguments(argsStr)
 			}
+			out = append(out, domain.ToolCall{
+				ID:        fmt.Sprintf("call_%s", name),
+				Name:      name,
+				Arguments: args,
+			})
 		}
 		if len(out) > 0 {
 			return out
 		}
 	}
 
-	// Pattern 3: ```json ... ``` code blocks
+	// Pattern 4: ```json ... ``` code blocks
 	jsonBlockRe := regexp.MustCompile("(?s)```(?:json)?\\s*([\\{\\[].*?[\\}\\]])\\s*```")
 	if matches := jsonBlockRe.FindAllStringSubmatch(content, -1); len(matches) > 0 {
 		for _, m := range matches {
@@ -290,9 +317,31 @@ func extractTextToolCalls(content string) []domain.ToolCall {
 		}
 	}
 
-	// Pattern 4: Whole content or substring is raw JSON object or array
+	// Pattern 5: ```(?:python|bash|plaintext)? ... ``` code blocks
+	codeBlockRe := regexp.MustCompile("(?s)```(?:python|bash|sh|plaintext|text)?\\s*([a-zA-Z0-9_\\-]+)\\((.*?)\\)\\s*```")
+	if matches := codeBlockRe.FindAllStringSubmatch(content, -1); len(matches) > 0 {
+		for _, m := range matches {
+			name := normalizeName(m[1])
+			args := parseCodeArguments(m[2])
+			out = append(out, domain.ToolCall{
+				ID:        fmt.Sprintf("call_%s", name),
+				Name:      name,
+				Arguments: args,
+			})
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+
+	// Pattern 6: Whole content or substring is raw JSON object or array
 	calls := parseJSONOrArrayCalls(content)
 	if len(calls) > 0 {
+		return calls
+	}
+
+	// Pattern 7: Bare function call in plain content
+	if calls := parseCodeToolCalls(content); len(calls) > 0 {
 		return calls
 	}
 
@@ -326,23 +375,46 @@ func parseJSONToolCall(s string) (domain.ToolCall, bool) {
 		return domain.ToolCall{}, false
 	}
 	var name string
-	for _, key := range []string{"name", "tool", "tool_name", "function"} {
-		if val, ok := raw[key]; ok {
-			var str string
-			if err := json.Unmarshal(val, &str); err == nil && str != "" {
-				name = str
-				break
+	var args map[string]any
+
+	if fnRaw, ok := raw["function"]; ok {
+		var fnObj struct {
+			Name       string          `json:"name"`
+			Arguments  json.RawMessage `json:"arguments"`
+			Parameters json.RawMessage `json:"parameters"`
+		}
+		if err := json.Unmarshal(fnRaw, &fnObj); err == nil && fnObj.Name != "" {
+			name = fnObj.Name
+			if len(fnObj.Arguments) > 0 {
+				args = parseArguments(fnObj.Arguments)
+			} else if len(fnObj.Parameters) > 0 {
+				args = parseArguments(fnObj.Parameters)
+			}
+		}
+	}
+
+	if name == "" {
+		for _, key := range []string{"name", "tool", "tool_name", "function"} {
+			if val, ok := raw[key]; ok {
+				var str string
+				if err := json.Unmarshal(val, &str); err == nil && str != "" {
+					name = str
+					break
+				}
 			}
 		}
 	}
 	if name == "" {
 		return domain.ToolCall{}, false
 	}
-	var args map[string]any
-	for _, key := range []string{"arguments", "parameters", "args", "params", "input"} {
-		if val, ok := raw[key]; ok {
-			args = parseArguments(val)
-			break
+	name = normalizeName(name)
+
+	if args == nil {
+		for _, key := range []string{"arguments", "parameters", "args", "params", "input"} {
+			if val, ok := raw[key]; ok {
+				args = parseArguments(val)
+				break
+			}
 		}
 	}
 	if args == nil {
@@ -353,6 +425,222 @@ func parseJSONToolCall(s string) (domain.ToolCall, bool) {
 		Name:      name,
 		Arguments: args,
 	}, true
+}
+
+var codeCallRe = regexp.MustCompile(`(?s)([a-zA-Z0-9_\-]+)\((.*?)\)`)
+
+func parseCodeToolCalls(s string) []domain.ToolCall {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, "`")
+	matches := codeCallRe.FindAllStringSubmatch(s, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	var out []domain.ToolCall
+	for _, m := range matches {
+		name := normalizeName(m[1])
+		switch strings.ToLower(name) {
+		case "if", "for", "while", "switch", "print", "echo", "return":
+			continue
+		}
+		args := parseCodeArguments(m[2])
+		out = append(out, domain.ToolCall{
+			ID:        fmt.Sprintf("call_%s", name),
+			Name:      name,
+			Arguments: args,
+		})
+	}
+	return out
+}
+
+func parseCodeArguments(rawArgs string) map[string]any {
+	rawArgs = strings.TrimSpace(rawArgs)
+	if rawArgs == "" {
+		return map[string]any{}
+	}
+	if strings.HasPrefix(rawArgs, "{") && strings.HasSuffix(rawArgs, "}") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(rawArgs), &m); err == nil {
+			return m
+		}
+	}
+	args := splitCodeArguments(rawArgs)
+	out := make(map[string]any, len(args))
+	pos := 0
+	for _, arg := range args {
+		arg = strings.TrimSpace(arg)
+		if arg == "" {
+			continue
+		}
+		key, valStr, hasKey := splitKeyValue(arg)
+		if hasKey {
+			key = strings.TrimSpace(key)
+			key = strings.Trim(key, `"'`)
+			key = strings.TrimPrefix(key, "$")
+			out[key] = parseScalarOrJSONValue(valStr)
+		} else {
+			out[fmt.Sprintf("arg%d", pos)] = parseScalarOrJSONValue(arg)
+			pos++
+		}
+	}
+	return out
+}
+
+func splitCodeArguments(s string) []string {
+	var tokens []string
+	var cur strings.Builder
+	var inSingle, inDouble, escaped bool
+	var braceDepth, bracketDepth, parenDepth int
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if escaped {
+			cur.WriteByte(ch)
+			escaped = false
+			continue
+		}
+		if ch == '\\' {
+			cur.WriteByte(ch)
+			escaped = true
+			continue
+		}
+		if ch == '\'' && !inDouble {
+			inSingle = !inSingle
+			cur.WriteByte(ch)
+			continue
+		}
+		if ch == '"' && !inSingle {
+			inDouble = !inDouble
+			cur.WriteByte(ch)
+			continue
+		}
+		if !inSingle && !inDouble {
+			switch ch {
+			case '{':
+				braceDepth++
+			case '}':
+				braceDepth--
+			case '[':
+				bracketDepth++
+			case ']':
+				bracketDepth--
+			case '(':
+				parenDepth++
+			case ')':
+				parenDepth--
+			case ',':
+				if braceDepth == 0 && bracketDepth == 0 && parenDepth == 0 {
+					tokens = append(tokens, cur.String())
+					cur.Reset()
+					continue
+				}
+			}
+		}
+		cur.WriteByte(ch)
+	}
+	if cur.Len() > 0 {
+		tokens = append(tokens, cur.String())
+	}
+	return tokens
+}
+
+func splitKeyValue(s string) (key, val string, ok bool) {
+	var inSingle, inDouble, escaped bool
+	var braceDepth, bracketDepth, parenDepth int
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' {
+			escaped = true
+			continue
+		}
+		if ch == '\'' && !inDouble {
+			inSingle = !inSingle
+			continue
+		}
+		if ch == '"' && !inSingle {
+			inDouble = !inDouble
+			continue
+		}
+		if !inSingle && !inDouble && braceDepth == 0 && bracketDepth == 0 && parenDepth == 0 {
+			if ch == '=' || ch == ':' {
+				return s[:i], s[i+1:], true
+			}
+			switch ch {
+			case '{':
+				braceDepth++
+			case '}':
+				braceDepth--
+			case '[':
+				bracketDepth++
+			case ']':
+				bracketDepth--
+			case '(':
+				parenDepth++
+			case ')':
+				parenDepth--
+			}
+		}
+	}
+	return "", s, false
+}
+
+func parseScalarOrJSONValue(s string) any {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if strings.HasPrefix(s, "'") && strings.HasSuffix(s, "'") && len(s) >= 2 {
+		inner := s[1 : len(s)-1]
+		return strings.ReplaceAll(inner, `\'`, `'`)
+	}
+	if strings.HasPrefix(s, `"`) && strings.HasSuffix(s, `"`) && len(s) >= 2 {
+		var unquoted string
+		if err := json.Unmarshal([]byte(s), &unquoted); err == nil {
+			return unquoted
+		}
+		inner := s[1 : len(s)-1]
+		return strings.ReplaceAll(inner, `\"`, `"`)
+	}
+	lower := strings.ToLower(s)
+	if lower == "true" {
+		return true
+	}
+	if lower == "false" {
+		return false
+	}
+	if lower == "none" || lower == "null" {
+		return nil
+	}
+	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return n
+	}
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return f
+	}
+	if (strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]")) || (strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}")) {
+		var v any
+		if err := json.Unmarshal([]byte(s), &v); err == nil {
+			return v
+		}
+		jsonStr := strings.ReplaceAll(s, "'", `"`)
+		if err := json.Unmarshal([]byte(jsonStr), &v); err == nil {
+			return v
+		}
+	}
+	return s
+}
+
+func normalizeName(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.TrimPrefix(name, "functions.")
+	name = strings.TrimPrefix(name, "tools.")
+	name = strings.TrimPrefix(name, "function.")
+	return name
 }
 
 func truncateForLog(b []byte) string {

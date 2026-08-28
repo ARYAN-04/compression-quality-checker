@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"can-i-compress-it/internal/domain"
@@ -65,5 +66,36 @@ func TestSchedulerOnCellResult(t *testing.T) {
 	}
 	if count != 2 {
 		t.Fatalf("expected 2 onCell callbacks, got %d", count)
+	}
+}
+
+func TestSystemPromptFormatting(t *testing.T) {
+	tools := []domain.ToolDefinition{
+		{Name: "get_weather", Description: "Get current weather"},
+	}
+
+	// LevelNone
+	promptNone := systemPrompt(domain.LevelNone, tools)
+	if !strings.Contains(promptNone, "You are a tool-using assistant") {
+		t.Errorf("expected tool-using assistant text, got %q", promptNone)
+	}
+	if !strings.Contains(promptNone, "get_weather") {
+		t.Errorf("expected get_weather in prompt, got %q", promptNone)
+	}
+	if !strings.Contains(promptNone, "To invoke a tool, respond with a tool call") {
+		t.Errorf("expected tool invocation instructions, got %q", promptNone)
+	}
+
+	// LevelMax with catalogue
+	metaTools := []domain.ToolDefinition{
+		{Name: mcp.MetaGetSchema},
+		{Name: mcp.MetaInvoke},
+	}
+	promptMax := systemPrompt(domain.LevelMax, metaTools, "get_weather", "lookup_user")
+	if !strings.Contains(promptMax, "Available tools in catalogue: [get_weather, lookup_user]") {
+		t.Errorf("expected catalogue tool names in LevelMax prompt, got %q", promptMax)
+	}
+	if !strings.Contains(promptMax, "get_tool_schema") || !strings.Contains(promptMax, "invoke_tool") {
+		t.Errorf("expected meta tools in LevelMax prompt, got %q", promptMax)
 	}
 }

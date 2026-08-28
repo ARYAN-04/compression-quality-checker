@@ -103,25 +103,90 @@ func TestExtractTextToolCalls(t *testing.T) {
 		t.Fatalf("extractTextToolCalls Pattern 1 failed: %+v", calls1)
 	}
 
-	// Pattern 2: <function=name> tag
-	text2 := `<function=search_repositories>{"query": "language:go"}</function>`
+	// Pattern 2: [TOOL_CALLS] tag (Mistral / Hermes)
+	text2 := `[TOOL_CALLS] [{"name": "update_status", "arguments": {"id": 123}}]`
 	calls2 := extractTextToolCalls(text2)
-	if len(calls2) != 1 || calls2[0].Name != "search_repositories" || calls2[0].Arguments["query"] != "language:go" {
+	if len(calls2) != 1 || calls2[0].Name != "update_status" || calls2[0].Arguments["id"] != float64(123) {
 		t.Fatalf("extractTextToolCalls Pattern 2 failed: %+v", calls2)
 	}
 
-	// Pattern 3: ```json markdown code block
-	text3 := "```json\n{\"name\": \"create_issue\", \"arguments\": {\"title\": \"Fix bug\"}}\n```"
+	// Pattern 3: <function=name> tag
+	text3 := `<function=search_repositories>{"query": "language:go"}</function>`
 	calls3 := extractTextToolCalls(text3)
-	if len(calls3) != 1 || calls3[0].Name != "create_issue" || calls3[0].Arguments["title"] != "Fix bug" {
+	if len(calls3) != 1 || calls3[0].Name != "search_repositories" || calls3[0].Arguments["query"] != "language:go" {
 		t.Fatalf("extractTextToolCalls Pattern 3 failed: %+v", calls3)
 	}
 
-	// Pattern 4: Raw JSON object
-	text4 := `{"tool": "get_weather", "parameters": {"city": "Tokyo"}}`
+	// Pattern 4: ```json markdown code block
+	text4 := "```json\n{\"name\": \"create_issue\", \"arguments\": {\"title\": \"Fix bug\"}}\n```"
 	calls4 := extractTextToolCalls(text4)
-	if len(calls4) != 1 || calls4[0].Name != "get_weather" || calls4[0].Arguments["city"] != "Tokyo" {
+	if len(calls4) != 1 || calls4[0].Name != "create_issue" || calls4[0].Arguments["title"] != "Fix bug" {
 		t.Fatalf("extractTextToolCalls Pattern 4 failed: %+v", calls4)
+	}
+
+	// Pattern 5: ```python code block function call
+	text5 := "```python\nupdate_issue_status(issue_key='ACME-77', new_status='In Review')\n```"
+	calls5 := extractTextToolCalls(text5)
+	if len(calls5) != 1 || calls5[0].Name != "update_issue_status" || calls5[0].Arguments["issue_key"] != "ACME-77" || calls5[0].Arguments["new_status"] != "In Review" {
+		t.Fatalf("extractTextToolCalls Pattern 5 (python) failed: %+v", calls5)
+	}
+
+	// Pattern 6: ```bash code block function call
+	text6 := "```bash\nsearch_files('/srv/projects', '*.log')\n```"
+	calls6 := extractTextToolCalls(text6)
+	if len(calls6) != 1 || calls6[0].Name != "search_files" || calls6[0].Arguments["arg0"] != "/srv/projects" || calls6[0].Arguments["arg1"] != "*.log" {
+		t.Fatalf("extractTextToolCalls Pattern 6 (bash) failed: %+v", calls6)
+	}
+
+	// Pattern 7: Raw JSON object
+	text7 := `{"tool": "get_weather", "parameters": {"city": "Tokyo"}}`
+	calls7 := extractTextToolCalls(text7)
+	if len(calls7) != 1 || calls7[0].Name != "get_weather" || calls7[0].Arguments["city"] != "Tokyo" {
+		t.Fatalf("extractTextToolCalls Pattern 7 failed: %+v", calls7)
+	}
+
+	// Pattern 8: Bare function call in text
+	text8 := `update_issue_status(issue_key="ACME-77", new_status="Done")`
+	calls8 := extractTextToolCalls(text8)
+	if len(calls8) != 1 || calls8[0].Name != "update_issue_status" || calls8[0].Arguments["issue_key"] != "ACME-77" || calls8[0].Arguments["new_status"] != "Done" {
+		t.Fatalf("extractTextToolCalls Pattern 8 (bare) failed: %+v", calls8)
+	}
+}
+
+func TestClientChatToolChoiceAuto(t *testing.T) {
+	var capturedReq chatRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&capturedReq)
+		w.Header().Set("Content-Type", "application/json")
+		resp := `{
+			"choices": [{
+				"message": {
+					"role": "assistant",
+					"tool_calls": [{
+						"id": "call_1",
+						"type": "function",
+						"function": {
+							"name": "get_issue",
+							"arguments": {"owner": "torvalds"}
+						}
+					}]
+				}
+			}],
+			"usage": {"total_tokens": 100}
+		}`
+		_, _ = w.Write([]byte(resp))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-model", server.URL, "")
+	_, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "get issue"}}, []domain.ToolDefinition{
+		{Name: "get_issue", Description: "Get issue"},
+	})
+	if err != nil {
+		t.Fatalf("Chat failed: %v", err)
+	}
+	if capturedReq.ToolChoice != "auto" {
+		t.Errorf("expected tool_choice 'auto', got %q", capturedReq.ToolChoice)
 	}
 }
 

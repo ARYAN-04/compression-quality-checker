@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"can-i-compress-it/internal/domain"
@@ -90,8 +91,14 @@ func (s *Scheduler) runTask(ctx context.Context, proxy mcp.Proxy, tools []domain
 	level domain.CompressionLevel, task domain.Task,
 ) (domain.CellResult, error) {
 	start := time.Now()
+	var catalogue []string
+	if level == domain.LevelMax {
+		for _, t := range task.Tools {
+			catalogue = append(catalogue, t.Name)
+		}
+	}
 	msgs := []inference.Message{
-		{Role: "system", Content: systemPrompt(level)},
+		{Role: "system", Content: systemPrompt(level, tools, catalogue...)},
 		{Role: "user", Content: task.Prompt},
 	}
 	var executed []domain.ToolCall
@@ -156,12 +163,24 @@ func (s *Scheduler) scoreTask(res *domain.CellResult, task domain.Task, executed
 	}
 }
 
-func systemPrompt(level domain.CompressionLevel) string {
-	base := "You are a tool-using assistant. Select and invoke exactly the tool the user asks for."
-	if level == domain.LevelMax {
-		return base + " Tool schemas are compressed: call get_tool_schema first, then invoke_tool."
+func systemPrompt(level domain.CompressionLevel, tools []domain.ToolDefinition, catalogue ...string) string {
+	toolsJSON, err := json.Marshal(tools)
+	if err != nil {
+		toolsJSON = []byte("[]")
 	}
-	return base
+	var sb strings.Builder
+	sb.WriteString("You are a tool-using assistant. You have access to the following tools:\n")
+	sb.WriteString(string(toolsJSON))
+	sb.WriteString("\n\nTo invoke a tool, respond with a tool call (either native tool_call or JSON object: {\"name\": \"<tool_name>\", \"arguments\": {<args>}}).")
+
+	if level == domain.LevelMax {
+		if len(catalogue) > 0 {
+			sb.WriteString(fmt.Sprintf("\nAvailable tools in catalogue: [%s]. First call get_tool_schema(tool_name=\"...\"), then call invoke_tool(tool_name=\"...\", arguments={...}).", strings.Join(catalogue, ", ")))
+		} else {
+			sb.WriteString("\nFirst call get_tool_schema(tool_name=\"...\"), then call invoke_tool(tool_name=\"...\", arguments={...}).")
+		}
+	}
+	return sb.String()
 }
 
 func schemaTokens(tools []domain.ToolDefinition) int {
@@ -175,13 +194,27 @@ func schemaTokens(tools []domain.ToolDefinition) int {
 // unwrapMeta converts meta-tool traffic into the underlying invocation.
 // Schema lookups are protocol overhead, not scored calls.
 func unwrapMeta(call domain.ToolCall) (domain.ToolCall, bool) {
-	if call.Name == mcp.MetaGetSchema {
+	if isMetaGetSchema(call.Name) {
 		return domain.ToolCall{}, false
 	}
-	if call.Name == mcp.MetaInvoke {
+	if isMetaInvoke(call.Name) {
 		name, _ := call.Arguments["tool_name"].(string)
-		args, _ := call.Arguments["arguments"].(map[string]any)
+		args, ok := call.Arguments["arguments"].(map[string]any)
+		if !ok {
+			args, _ = call.Arguments["tool_input"].(map[string]any)
+		}
+		if args == nil {
+			args = map[string]any{}
+		}
 		return domain.ToolCall{Name: name, Arguments: args}, true
 	}
 	return call, true
+}
+
+func isMetaGetSchema(name string) bool {
+	return name == mcp.MetaGetSchema || strings.HasSuffix(name, "_"+mcp.MetaGetSchema) || strings.Contains(name, "get_tool_schema")
+}
+
+func isMetaInvoke(name string) bool {
+	return name == mcp.MetaInvoke || strings.HasSuffix(name, "_"+mcp.MetaInvoke) || strings.Contains(name, "invoke_tool")
 }
