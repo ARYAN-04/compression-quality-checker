@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -129,10 +131,12 @@ func (m CompressionStepModel) Update(msg tea.Msg) (CompressionStepModel, tea.Cmd
 			}
 
 		case "a", "A":
-			for i := range m.levels {
-				m.levels[i].Selected = true
+			if m.focusedField == focusLevels {
+				for i := range m.levels {
+					m.levels[i].Selected = true
+				}
+				return m, nil
 			}
-			return m, nil
 
 		case " ":
 			if m.focusedField == focusLevels {
@@ -220,10 +224,20 @@ func (m CompressionStepModel) SelectedLevels() ([]domain.CompressionLevel, error
 
 // CompressorBinary returns compressor path if subprocess mode is chosen.
 func (m CompressionStepModel) CompressorBinary() string {
-	if m.backend == BackendSubprocess {
-		return strings.TrimSpace(m.compressorBin.Value())
+	if m.backend != BackendSubprocess {
+		return ""
 	}
-	return ""
+	bin := strings.TrimSpace(m.compressorBin.Value())
+	if bin == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	} else if strings.HasPrefix(bin, "~/") || strings.HasPrefix(bin, `~\`) {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, bin[2:])
+		}
+	}
+	return bin
 }
 
 // View renders Step 3.

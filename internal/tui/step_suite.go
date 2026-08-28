@@ -66,7 +66,13 @@ func NewSuiteStepModel() SuiteStepModel {
 			{Name: "jira", DisplayName: "Jira MCP Server", Description: "5 tools (issue tracking, transitions, JQL search)", ToolCount: 5, Selected: true},
 			{Name: "slack", DisplayName: "Slack MCP Server", Description: "5 tools (channels, post message, threads, users)", ToolCount: 5, Selected: true},
 			{Name: "sqlite", DisplayName: "SQLite MCP Server", Description: "4 tools (tables, schema describe, read/execute query)", ToolCount: 4, Selected: true},
-			{Name: "filesystem", DisplayName: "Filesystem MCP Server", Description: "6 tools (list dir, read/search/move/delete file)", ToolCount: 6, Selected: true},
+			{Name: "filesystem", DisplayName: "Filesystem MCP Server", Description: "7 tools (list directory, read, write, search, move, info, delete)", ToolCount: 7, Selected: true},
+			{Name: "postgres", DisplayName: "PostgreSQL MCP Server", Description: "5 tools (schemas, tables, describe, read/execute query)", ToolCount: 5, Selected: true},
+			{Name: "memory", DisplayName: "Knowledge Graph Memory MCP Server", Description: "5 tools (entities, relations, open nodes, search, graph)", ToolCount: 5, Selected: true},
+			{Name: "fetch", DisplayName: "Fetch MCP Server", Description: "3 tools (fetch URL, extract markdown, headers)", ToolCount: 3, Selected: true},
+			{Name: "brave-search", DisplayName: "Brave Search MCP Server", Description: "2 tools (web search, local search)", ToolCount: 2, Selected: true},
+			{Name: "puppeteer", DisplayName: "Puppeteer MCP Server", Description: "5 tools (browser navigation, screenshot, click, fill, eval)", ToolCount: 5, Selected: true},
+			{Name: "git", DisplayName: "Git MCP Server", Description: "5 tools (status, diff, commit, log, branch)", ToolCount: 5, Selected: true},
 		},
 		genTasksInput: textinput.New(),
 		genSeedInput:  textinput.New(),
@@ -78,6 +84,7 @@ func NewSuiteStepModel() SuiteStepModel {
 	m.genTasksInput.Prompt = "Task Count:      "
 	m.genTasksInput.PromptStyle = StyleLabel
 	m.genTasksInput.SetValue("12")
+	m.genTasksInput.Focus()
 
 	m.genSeedInput.Placeholder = "42"
 	m.genSeedInput.Prompt = "Random Seed:     "
@@ -87,11 +94,13 @@ func NewSuiteStepModel() SuiteStepModel {
 	m.liveCmdInput.Placeholder = "npx -y @modelcontextprotocol/server-filesystem /tmp"
 	m.liveCmdInput.Prompt = "MCP Command:     "
 	m.liveCmdInput.PromptStyle = StyleLabel
+	m.liveCmdInput.Focus()
 
 	m.filePathInput.Placeholder = "./suites/synthetic_v1.json"
 	m.filePathInput.Prompt = "JSON File Path:  "
 	m.filePathInput.PromptStyle = StyleLabel
 	m.filePathInput.SetValue("./suites/synthetic_v1.json")
+	m.filePathInput.Focus()
 
 	return m
 }
@@ -103,29 +112,47 @@ func (m *SuiteStepModel) SetSize(width, height int) {
 	m.filePathInput.Width = w
 }
 
+func (m SuiteStepModel) isTextInputFocused() bool {
+	switch m.mode {
+	case SuiteModeGenerator:
+		return m.genFieldIdx == 0 || m.genFieldIdx == 4
+	case SuiteModeLive, SuiteModeFile:
+		return true
+	default:
+		return false
+	}
+}
+
 // Update handles key messages for Step 2.
 func (m SuiteStepModel) Update(msg tea.Msg) (SuiteStepModel, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "1":
-			m.mode = SuiteModeStandard
-			return m, nil
-		case "2":
-			m.mode = SuiteModeTemplates
-			return m, nil
-		case "3":
-			m.mode = SuiteModeGenerator
-			return m, nil
-		case "4":
-			m.mode = SuiteModeLive
-			return m, nil
-		case "5":
-			m.mode = SuiteModeFile
-			return m, nil
+		if !m.isTextInputFocused() {
+			switch msg.String() {
+			case "1":
+				m.mode = SuiteModeStandard
+				return m, nil
+			case "2":
+				m.mode = SuiteModeTemplates
+				return m, nil
+			case "3":
+				m.mode = SuiteModeGenerator
+				return m, nil
+			case "4":
+				m.mode = SuiteModeLive
+				return m, nil
+			case "5":
+				m.mode = SuiteModeFile
+				return m, nil
+			case " ":
+				m.handleSpace()
+				return m, nil
+			}
+		}
 
+		switch msg.String() {
 		case "tab":
 			m.errMessage = ""
 			m.handleTab(1)
@@ -137,24 +164,28 @@ func (m SuiteStepModel) Update(msg tea.Msg) (SuiteStepModel, tea.Cmd) {
 			return m, nil
 
 		case "up":
-			m.handleUp()
-			return m, nil
+			if !m.isTextInputFocused() || m.mode == SuiteModeGenerator {
+				m.handleUp()
+				return m, nil
+			}
 
 		case "down":
-			m.handleDown()
-			return m, nil
+			if !m.isTextInputFocused() || m.mode == SuiteModeGenerator {
+				m.handleDown()
+				return m, nil
+			}
 
 		case "left":
-			m.handleLeft()
-			return m, nil
+			if m.mode == SuiteModeGenerator && (m.genFieldIdx == 1 || m.genFieldIdx == 2 || m.genFieldIdx == 3) {
+				m.handleLeft()
+				return m, nil
+			}
 
 		case "right":
-			m.handleRight()
-			return m, nil
-
-		case " ":
-			m.handleSpace()
-			return m, nil
+			if m.mode == SuiteModeGenerator && (m.genFieldIdx == 1 || m.genFieldIdx == 2 || m.genFieldIdx == 3) {
+				m.handleRight()
+				return m, nil
+			}
 		}
 	}
 

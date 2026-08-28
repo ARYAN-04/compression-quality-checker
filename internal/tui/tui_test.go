@@ -2,6 +2,8 @@ package tui
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -96,7 +98,8 @@ func TestSuiteStepModel(t *testing.T) {
 		t.Fatalf("expected 12 synthetic tasks, got %d", len(tasks))
 	}
 
-	// Key update
+	// Switch to templates mode (where no text input is focused)
+	m.mode = SuiteModeTemplates
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
 	if m.mode != SuiteModeStandard {
 		t.Fatalf("expected mode to switch back to standard on '1'")
@@ -306,5 +309,114 @@ func TestStartBenchmarkMock(t *testing.T) {
 
 	if receivedCells != 2 {
 		t.Fatalf("expected 2 completed cells, got %d", receivedCells)
+	}
+}
+
+func TestCompressionStepTextInputAndTilde(t *testing.T) {
+	m := NewCompressionStepModel()
+	// Uncheck first level
+	m.levels[0].Selected = false
+
+	// Focus on compressorBin
+	m.focusedField = focusCompressorBin
+	m.compressorBin.Focus()
+	m.compressorBin.SetValue("")
+
+	// Type 'a', 'A', ' ', '1' into compressorBin
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+
+	// Level 0 should still be unselected (typing 'a' or ' ' did not trigger level shortcuts)
+	if m.levels[0].Selected {
+		t.Fatalf("expected level 0 to stay unselected when typing 'a' into text input")
+	}
+	if m.compressorBin.Value() != "aA 1" {
+		t.Fatalf("expected compressorBin to contain 'aA 1', got %q", m.compressorBin.Value())
+	}
+
+	// Test tilde expansion in CompressorBinary
+	m.backend = BackendSubprocess
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("os.UserHomeDir failed: %v", err)
+	}
+
+	m.compressorBin.SetValue("~")
+	if got := m.CompressorBinary(); got != home {
+		t.Fatalf("CompressorBinary('~') = %q, want %q", got, home)
+	}
+
+	m.compressorBin.SetValue("~/bin/mcp-compressor")
+	expectedPath := filepath.Join(home, "bin/mcp-compressor")
+	if got := m.CompressorBinary(); got != expectedPath {
+		t.Fatalf("CompressorBinary('~/bin/mcp-compressor') = %q, want %q", got, expectedPath)
+	}
+
+	m.compressorBin.SetValue("/usr/local/bin/mcp-compressor")
+	if got := m.CompressorBinary(); got != "/usr/local/bin/mcp-compressor" {
+		t.Fatalf("CompressorBinary('/usr/local/bin/mcp-compressor') = %q, want %q", got, "/usr/local/bin/mcp-compressor")
+	}
+}
+
+func TestSuiteStepTextInputKeyRouting(t *testing.T) {
+	// 1. SuiteModeGenerator with genTasksInput focused (genFieldIdx = 0)
+	m := NewSuiteStepModel()
+	m.mode = SuiteModeGenerator
+	m.genFieldIdx = 0
+	m.updateGenFocus()
+	m.genTasksInput.SetValue("")
+
+	// Type numbers '1', '2', ' ', 'a', '5' into genTasksInput
+	for _, r := range []rune{'1', '2', ' ', 'a', '5'} {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if m.mode != SuiteModeGenerator {
+		t.Fatalf("expected mode to remain SuiteModeGenerator, got %v", m.mode)
+	}
+	if m.genTasksInput.Value() != "12 a5" {
+		t.Fatalf("expected genTasksInput to be '12 a5', got %q", m.genTasksInput.Value())
+	}
+
+	// 2. SuiteModeLive with liveCmdInput focused
+	m.mode = SuiteModeLive
+	m.liveCmdInput.SetValue("")
+	for _, r := range []rune{'1', ' ', 'n', 'p', 'x', ' ', '4'} {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if m.mode != SuiteModeLive {
+		t.Fatalf("expected mode to remain SuiteModeLive, got %v", m.mode)
+	}
+	if m.liveCmdInput.Value() != "1 npx 4" {
+		t.Fatalf("expected liveCmdInput to be '1 npx 4', got %q", m.liveCmdInput.Value())
+	}
+
+	// 3. SuiteModeFile with filePathInput focused
+	m.mode = SuiteModeFile
+	m.filePathInput.SetValue("")
+	for _, r := range []rune{'2', ' ', 't', 'e', 's', 't', ' ', '3', '.', 'j', 's', 'o', 'n'} {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if m.mode != SuiteModeFile {
+		t.Fatalf("expected mode to remain SuiteModeFile, got %v", m.mode)
+	}
+	if m.filePathInput.Value() != "2 test 3.json" {
+		t.Fatalf("expected filePathInput to be '2 test 3.json', got %q", m.filePathInput.Value())
+	}
+
+	// 4. SuiteModeTemplates (no text input focused) -> should switch tabs and toggle
+	m.mode = SuiteModeTemplates
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	if m.mode != SuiteModeGenerator {
+		t.Fatalf("expected mode to switch to SuiteModeGenerator on '3', got %v", m.mode)
+	}
+
+	m.mode = SuiteModeTemplates
+	m.templateIdx = 0
+	origSelected := m.templates[0].Selected
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	if m.templates[0].Selected == origSelected {
+		t.Fatalf("expected template[0].Selected to toggle on space in SuiteModeTemplates")
 	}
 }
