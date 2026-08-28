@@ -34,7 +34,7 @@ type Model interface {
 // Message is one OpenAI-style conversation entry.
 type Message struct {
 	Role       string           `json:"role"`
-	Content    string           `json:"content"`
+	Content    string           `json:"content,omitempty"`
 	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string           `json:"tool_call_id,omitempty"`
 }
@@ -80,6 +80,31 @@ func NewClient(model, endpoint, apiKey string) *Client {
 
 func (c *Client) Name() string { return c.model }
 
+// StringOrRawJSON stores tool arguments and guarantees that when serialized
+// in an outgoing OpenAI payload, it is always encoded as a JSON string.
+type StringOrRawJSON string
+
+func (s *StringOrRawJSON) UnmarshalJSON(b []byte) error {
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		*s = ""
+		return nil
+	}
+	if trimmed[0] == '"' {
+		var str string
+		if err := json.Unmarshal(trimmed, &str); err == nil {
+			*s = StringOrRawJSON(str)
+			return nil
+		}
+	}
+	*s = StringOrRawJSON(string(trimmed))
+	return nil
+}
+
+func (s StringOrRawJSON) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(s))
+}
+
 // AssistantToolCall builds an assistant message representing one call,
 // for feeding tool-call turns back into the conversation.
 func AssistantToolCall(name, argumentsJSON, id string) Message {
@@ -92,7 +117,7 @@ func AssistantToolCall(name, argumentsJSON, id string) Message {
 		Type: "function",
 	}}
 	msg.ToolCalls[0].Function.Name = name
-	msg.ToolCalls[0].Function.Arguments = json.RawMessage(argumentsJSON)
+	msg.ToolCalls[0].Function.Arguments = StringOrRawJSON(argumentsJSON)
 	return msg
 }
 
@@ -101,13 +126,13 @@ type openAIToolCall struct {
 	Type     string `json:"type"`
 	Function struct {
 		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
+		Arguments StringOrRawJSON `json:"arguments"`
 	} `json:"function"`
 }
 
 type openAIFunctionCall struct {
 	Name      string          `json:"name"`
-	Arguments json.RawMessage `json:"arguments"`
+	Arguments StringOrRawJSON `json:"arguments"`
 }
 
 type chatRequest struct {
@@ -223,8 +248,23 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tools []domain.ToolDe
 	return out, nil
 }
 
-func parseArguments(raw json.RawMessage) map[string]any {
-	trimmed := bytes.TrimSpace(raw)
+func parseArguments(v any) map[string]any {
+	var rawBytes []byte
+	switch val := v.(type) {
+	case StringOrRawJSON:
+		rawBytes = []byte(val)
+	case json.RawMessage:
+		rawBytes = []byte(val)
+	case []byte:
+		rawBytes = val
+	case string:
+		rawBytes = []byte(val)
+	default:
+		if b, err := json.Marshal(v); err == nil {
+			rawBytes = b
+		}
+	}
+	trimmed := bytes.TrimSpace(rawBytes)
 	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
 		return map[string]any{}
 	}

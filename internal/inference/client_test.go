@@ -72,24 +72,24 @@ func TestNormalizeChatURL(t *testing.T) {
 
 func TestParseArguments(t *testing.T) {
 	// Stringified JSON
-	args1 := parseArguments(json.RawMessage(`"{\"owner\":\"torvalds\",\"repo\":\"linux\"}"`))
+	args1 := parseArguments(StringOrRawJSON(`"{\"owner\":\"torvalds\",\"repo\":\"linux\"}"`))
 	if args1["owner"] != "torvalds" || args1["repo"] != "linux" {
 		t.Errorf("stringified JSON parse failed: %v", args1)
 	}
 
 	// Direct JSON object
-	args2 := parseArguments(json.RawMessage(`{"owner":"torvalds","issue_number":42}`))
+	args2 := parseArguments(StringOrRawJSON(`{"owner":"torvalds","issue_number":42}`))
 	if args2["owner"] != "torvalds" || args2["issue_number"] != float64(42) {
 		t.Errorf("direct JSON object parse failed: %v", args2)
 	}
 
 	// Empty string or null
-	args3 := parseArguments(json.RawMessage(`null`))
+	args3 := parseArguments(StringOrRawJSON(`null`))
 	if len(args3) != 0 {
 		t.Errorf("null parse failed: %v", args3)
 	}
 
-	args4 := parseArguments(json.RawMessage(`""`))
+	args4 := parseArguments(StringOrRawJSON(`""`))
 	if len(args4) != 0 {
 		t.Errorf("empty string parse failed: %v", args4)
 	}
@@ -317,5 +317,51 @@ func TestClientChat404ErrorFormat(t *testing.T) {
 		if !strings.Contains(errString, "endpoint status 404") || !strings.Contains(errString, "url:") {
 			t.Errorf("error string missing 404 or URL context: %s", errString)
 		}
+	}
+}
+
+func TestAssistantToolCallArgumentsSerializedAsString(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role      string `json:"role"`
+				ToolCalls []struct {
+					Function struct {
+						Name      string          `json:"name"`
+						Arguments json.RawMessage `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+		if len(req.Messages) < 2 {
+			t.Fatalf("expected at least 2 messages, got %d", len(req.Messages))
+		}
+		asst := req.Messages[1]
+		if len(asst.ToolCalls) != 1 {
+			t.Fatalf("expected 1 tool call, got %d", len(asst.ToolCalls))
+		}
+		rawArgs := string(asst.ToolCalls[0].Function.Arguments)
+		// Arguments in OpenAI spec MUST be serialized as a JSON string
+		if !strings.HasPrefix(rawArgs, `"`) || !strings.HasSuffix(rawArgs, `"`) {
+			t.Fatalf("arguments was serialized as raw JSON object instead of JSON string: %s", rawArgs)
+		}
+
+		resp := `{"choices": [{"message": {"role": "assistant", "content": "Done"}}], "usage": {"total_tokens": 10}}`
+		_, _ = w.Write([]byte(resp))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-model", server.URL, "")
+	msgs := []Message{
+		{Role: "user", Content: "create a session"},
+		AssistantToolCall("create_session", `{"workspace":"alpha"}`, "call_123"),
+		{Role: "tool", Content: `{"ok":true,"session_id":"s_1"}`, ToolCallID: "call_123"},
+	}
+	_, err := client.Chat(context.Background(), msgs, nil)
+	if err != nil {
+		t.Fatalf("Chat failed: %v", err)
 	}
 }
