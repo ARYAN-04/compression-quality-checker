@@ -23,7 +23,9 @@ suites/
 can-i-compress-it
 *.log
 lm_studio_logs.txt
+compression_accuracy_analysis.md
 
 # macOS
 .DS_Store
+
 
