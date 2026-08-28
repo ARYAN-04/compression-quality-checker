@@ -23,7 +23,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(runCmd, testCmd, suiteCmd, analyzeCmd, reportCmd)
+	rootCmd.AddCommand(runCmd, testCmd, suiteCmd, analyzeCmd, reportCmd, serveMcpCmd)
 }
 
 // Execute runs the CLI and exits non-zero on error.

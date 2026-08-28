@@ -74,11 +74,14 @@ func parseLevels(spec []string) ([]domain.CompressionLevel, error) {
 // loadSuiteOrBuiltin falls back to the embedded suite when the default
 // path is missing so the tool works out of the box.
 func loadSuiteOrBuiltin(path string, warn io.Writer) ([]domain.Task, error) {
+	if path == "suite" || path == "" {
+		return suite.Builtin(), nil
+	}
 	tasks, err := suite.Load(path)
 	if err == nil {
 		return tasks, nil
 	}
-	if path == defaultSuitePath && warn != nil {
+	if (path == defaultSuitePath || path == "suite" || path == "") && warn != nil {
 		fmt.Fprintln(warn, "note: no suite file found; using embedded synthetic_v1 suite")
 		return suite.Builtin(), nil
 	}

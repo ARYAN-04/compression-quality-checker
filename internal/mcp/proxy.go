@@ -41,7 +41,7 @@ func NewProxy(ctx context.Context, cfg Config, suiteTools []domain.ToolDefinitio
 	if err := validateLevel(cfg.Level); err != nil {
 		return nil, err
 	}
-	if cfg.Binary == "" {
+	if cfg.Binary == "" && len(cfg.TargetCmd) == 0 {
 		return newBuiltinProxy(cfg.Level, cfg.ThreadFields, suiteTools), nil
 	}
 	return newSubprocessProxy(ctx, cfg, suiteTools)

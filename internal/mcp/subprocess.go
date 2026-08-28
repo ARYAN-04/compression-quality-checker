@@ -5,7 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"can-i-compress-it/internal/domain"
@@ -31,22 +35,66 @@ type jsonRPCError struct {
 	Message string `json:"message"`
 }
 
-// subprocessProxy manages an external mcp-compressor process.
+// subprocessProxy manages an external mcp-compressor or direct target MCP process.
 type subprocessProxy struct {
 	mu      sync.Mutex
 	cmd     *exec.Cmd
-	stdin   interface{ Write([]byte) (int, error) }
+	stdin   io.WriteCloser
 	scanner *bufio.Scanner
 	nextID  int
 	level   domain.CompressionLevel
 	tools   []domain.ToolDefinition
 }
 
+func expandHome(path string) (string, error) {
+	if path == "~" {
+		return os.UserHomeDir()
+	}
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("user home dir: %w", err)
+		}
+		return filepath.Join(home, path[2:]), nil
+	}
+	return path, nil
+}
+
 func newSubprocessProxy(ctx context.Context, cfg Config, suiteTools []domain.ToolDefinition) (Proxy, error) {
-	args := append([]string{
-		"--level", string(cfg.Level),
-	}, cfg.TargetCmd...)
-	cmd := exec.CommandContext(ctx, cfg.Binary, args...)
+	targetCmd := cfg.TargetCmd
+	if len(targetCmd) == 0 {
+		self, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("self binary path: %w", err)
+		}
+		targetServer := cfg.TargetServer
+		if targetServer == "" {
+			targetServer = "suite"
+		}
+		targetCmd = []string{self, "serve-mcp", "--suite", targetServer}
+	}
+
+	var cmd *exec.Cmd
+	if cfg.Level == domain.LevelNone {
+		cmd = exec.CommandContext(ctx, targetCmd[0], targetCmd[1:]...)
+	} else {
+		bin, err := expandHome(cfg.Binary)
+		if err != nil {
+			return nil, fmt.Errorf("expand compressor binary: %w", err)
+		}
+		if bin == "" {
+			return nil, fmt.Errorf("compressor binary path is required for level %s", cfg.Level)
+		}
+		args := []string{"-c", string(cfg.Level)}
+		if len(targetCmd) > 0 && targetCmd[0] == "--" {
+			args = append(args, targetCmd...)
+		} else {
+			args = append(args, "--")
+			args = append(args, targetCmd...)
+		}
+		cmd = exec.CommandContext(ctx, bin, args...)
+	}
+
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("compressor stdin: %w", err)
@@ -55,9 +103,11 @@ func newSubprocessProxy(ctx context.Context, cfg Config, suiteTools []domain.Too
 	if err != nil {
 		return nil, fmt.Errorf("compressor stdout: %w", err)
 	}
+	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start %s: %w", cfg.Binary, err)
+		return nil, fmt.Errorf("start subprocess: %w", err)
 	}
+
 	p := &subprocessProxy{
 		cmd:     cmd,
 		stdin:   stdin,
@@ -65,11 +115,35 @@ func newSubprocessProxy(ctx context.Context, cfg Config, suiteTools []domain.Too
 		level:   cfg.Level,
 		tools:   suiteTools,
 	}
-	if _, err := p.rpc(context.Background(), "initialize", map[string]any{}); err != nil {
+
+	initParams := map[string]any{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]any{},
+		"clientInfo":      map[string]any{"name": "can-i-compress-it", "version": "0.4.0"},
+	}
+	if _, err := p.rpc(context.Background(), "initialize", initParams); err != nil {
 		_ = p.Close()
 		return nil, fmt.Errorf("initialize compressor: %w", err)
 	}
+	if err := p.notify("notifications/initialized"); err != nil {
+		_ = p.Close()
+		return nil, fmt.Errorf("initialized notification: %w", err)
+	}
 	return p, nil
+}
+
+func (p *subprocessProxy) notify(method string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	req := map[string]any{"jsonrpc": "2.0", "method": method}
+	line, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	if _, err := p.stdin.Write(append(line, '\n')); err != nil {
+		return fmt.Errorf("write notification: %w", err)
+	}
+	return nil
 }
 
 func (p *subprocessProxy) Tools(_ context.Context) ([]domain.ToolDefinition, error) {
@@ -78,35 +152,79 @@ func (p *subprocessProxy) Tools(_ context.Context) ([]domain.ToolDefinition, err
 		return nil, fmt.Errorf("tools/list: %w", err)
 	}
 	var out struct {
-		Tools []domain.ToolDefinition `json:"tools"`
+		Tools []mcpServerTool `json:"tools"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("decode tools/list: %w", err)
 	}
-	return out.Tools, nil
+	tools := make([]domain.ToolDefinition, len(out.Tools))
+	for i, t := range out.Tools {
+		tools[i] = t.toolDefinition()
+	}
+	return tools, nil
 }
 
 func (p *subprocessProxy) Call(ctx context.Context, call domain.ToolCall) (any, error) {
-	if p.level == domain.LevelMax && call.Name != MetaGetSchema && call.Name != MetaInvoke {
-		return nil, fmt.Errorf("at max compression only meta-tools are callable, got %q", call.Name)
+	args := cloneMap(call.Arguments)
+	if strings.Contains(call.Name, "invoke_tool") {
+		if _, ok := args["tool_input"]; !ok {
+			if innerArgs, ok := args["arguments"].(map[string]any); ok {
+				args["tool_input"] = innerArgs
+			} else {
+				args["tool_input"] = map[string]any{}
+			}
+		}
 	}
-	params := map[string]any{"name": call.Name, "arguments": call.Arguments}
+	params := map[string]any{"name": call.Name, "arguments": args}
 	raw, err := p.rpc(ctx, "tools/call", params)
 	if err != nil {
 		return nil, fmt.Errorf("tools/call %s: %w", call.Name, err)
 	}
-	var result any
-	if err := json.Unmarshal(raw, &result); err != nil {
+	return unwrapCallResult(raw)
+}
+
+func cloneMap(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+func unwrapCallResult(raw json.RawMessage) (any, error) {
+	var resp struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(raw, &resp); err == nil && len(resp.Content) > 0 {
+		for _, c := range resp.Content {
+			if c.Type == "text" && c.Text != "" {
+				var inner any
+				if err := json.Unmarshal([]byte(c.Text), &inner); err == nil {
+					return inner, nil
+				}
+				return c.Text, nil
+			}
+		}
+	}
+	var fallback any
+	if err := json.Unmarshal(raw, &fallback); err != nil {
 		return nil, fmt.Errorf("decode tools/call result: %w", err)
 	}
-	return result, nil
+	return fallback, nil
 }
 
 func (p *subprocessProxy) Close() error {
-	if p.cmd.Process != nil {
+	if p.cmd != nil && p.cmd.Process != nil {
 		_ = p.cmd.Process.Kill()
+		return p.cmd.Wait()
 	}
-	return p.cmd.Wait()
+	return nil
 }
 
 func (p *subprocessProxy) rpc(ctx context.Context, method string, params any) (json.RawMessage, error) {
@@ -132,11 +250,26 @@ func (p *subprocessProxy) rpc(ctx context.Context, method string, params any) (j
 	done := make(chan error, 1)
 	var resp jsonRPCResponse
 	go func() {
-		if !p.scanner.Scan() {
-			done <- p.scanner.Err()
+		for p.scanner.Scan() {
+			data := p.scanner.Bytes()
+			if len(data) == 0 {
+				continue
+			}
+			if err := json.Unmarshal(data, &resp); err != nil {
+				done <- err
+				return
+			}
+			if resp.ID == req.ID {
+				done <- nil
+				return
+			}
+			resp = jsonRPCResponse{}
+		}
+		if err := p.scanner.Err(); err != nil {
+			done <- err
 			return
 		}
-		done <- json.Unmarshal(p.scanner.Bytes(), &resp)
+		done <- io.ErrUnexpectedEOF
 	}()
 	select {
 	case <-ctx.Done():
