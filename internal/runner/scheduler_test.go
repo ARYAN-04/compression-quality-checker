@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -99,3 +100,46 @@ func TestSystemPromptFormatting(t *testing.T) {
 		t.Errorf("expected meta tools in LevelMax prompt, got %q", promptMax)
 	}
 }
+
+type flakyModel struct {
+	failOn string
+}
+
+func (f flakyModel) Name() string { return "flaky" }
+
+func (f flakyModel) Chat(ctx context.Context, msgs []inference.Message, tools []domain.ToolDefinition) (inference.Response, error) {
+	for _, m := range msgs {
+		if strings.Contains(m.Content, f.failOn) {
+			return inference.Response{}, fmt.Errorf("channel error 400")
+		}
+	}
+	return inference.Response{
+		ToolCalls: []domain.ToolCall{{Name: "get_weather", Arguments: map[string]any{"city": "Tokyo"}}},
+	}, nil
+}
+
+func TestSchedulerToleratesModelChatError(t *testing.T) {
+	tasks := []domain.Task{
+		{ID: "task_fail", Prompt: "Trigger failure", Expected: domain.ExpectedCall{ToolName: "get_weather"}},
+		{ID: "task_pass", Prompt: "Run normally", Expected: domain.ExpectedCall{ToolName: "get_weather"}},
+	}
+	sched := NewScheduler(flakyModel{failOn: "Trigger failure"},
+		func(ctx context.Context, level domain.CompressionLevel) (mcp.Proxy, error) {
+			return mcp.NewProxy(ctx, mcp.Config{Level: level}, []domain.ToolDefinition{{Name: "get_weather"}})
+		}, slog.Default())
+
+	cells, err := sched.ExecuteMatrix(context.Background(), tasks, []domain.CompressionLevel{domain.LevelNone})
+	if err != nil {
+		t.Fatalf("expected matrix to complete despite chat error, got: %v", err)
+	}
+	if len(cells) != 2 {
+		t.Fatalf("expected 2 cells, got %d", len(cells))
+	}
+	if cells[0].SelectionCorrect {
+		t.Errorf("expected cell 0 to fail due to chat error")
+	}
+	if !cells[1].SelectionCorrect {
+		t.Errorf("expected cell 1 to pass")
+	}
+}
+

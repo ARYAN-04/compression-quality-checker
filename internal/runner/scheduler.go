@@ -108,7 +108,11 @@ func (s *Scheduler) runTask(ctx context.Context, proxy mcp.Proxy, tools []domain
 	for turn := 0; turn < s.maxTurns; turn++ {
 		resp, err := s.model.Chat(ctx, msgs, tools)
 		if err != nil {
-			return domain.CellResult{}, fmt.Errorf("model chat: %w", err)
+			if ctx.Err() != nil {
+				return domain.CellResult{}, ctx.Err()
+			}
+			s.log.Warn("model chat error on task", "task", task.ID, "level", level, "err", err)
+			break
 		}
 		tokens += resp.TokensUsed
 		if len(resp.ToolCalls) == 0 {
