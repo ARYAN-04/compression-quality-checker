@@ -19,5 +19,11 @@ suites/
 *.out
 /vendor/
 
+# Built binaries
+can-i-compress-it
+*.log
+lm_studio_logs.txt
+
 # macOS
 .DS_Store
+
