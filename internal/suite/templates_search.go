@@ -24,8 +24,9 @@ func braveLocalSearch() domain.ToolDefinition {
 }
 
 func braveSearchTasks() []domain.Task {
-	webSearch := braveWebSearch()
-	localSearch := braveLocalSearch()
+	tools := embeddedToolsMap("brave-search")
+	webSearch := getOrFallbackTool(tools, "brave_web_search", braveWebSearch())
+	localSearch := getOrFallbackTool(tools, "brave_local_search", braveLocalSearch())
 
 	return []domain.Task{
 		{

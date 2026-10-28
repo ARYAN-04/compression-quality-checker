@@ -1,10 +1,12 @@
 # Local agent/workspace docs — not for distribution
 AGENTS.md
 plan.html
+improvements.md
 
 # Generated benchmark artifacts
 results/
 suites/
+analysis/
 
 # Research documents (never commit)
 *.docx

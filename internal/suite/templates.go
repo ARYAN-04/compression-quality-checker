@@ -53,49 +53,35 @@ func Template(name string) ([]domain.Task, bool) {
 	}
 }
 
+// embeddedToolsMap loads canonical schemas for a standard server name.
+func embeddedToolsMap(serverName string) map[string]domain.ToolDefinition {
+	tools, ok := EmbeddedSchemaTools(serverName)
+	if !ok {
+		return map[string]domain.ToolDefinition{}
+	}
+	m := make(map[string]domain.ToolDefinition, len(tools))
+	for _, t := range tools {
+		m[t.Name] = t
+	}
+	return m
+}
+
+func getOrFallbackTool(tools map[string]domain.ToolDefinition, name string, fallback domain.ToolDefinition) domain.ToolDefinition {
+	if t, ok := tools[name]; ok && t.Name != "" {
+		return t
+	}
+	return fallback
+}
+
 func githubTasks() []domain.Task {
-	getIssue := tool("get_issue", "Get details of a specific issue in a GitHub repository.")
-	getIssue.Parameters = params(map[string]any{
-		"owner":        obj("string", "Repository owner login."),
-		"repo":         obj("string", "Repository name."),
-		"issue_number": obj("integer", "Issue number to fetch."),
-	})
-	searchRepos := tool("search_repositories", "Search for GitHub repositories by query.")
-	searchRepos.Parameters = params(map[string]any{
-		"query": obj("string", "Search query using GitHub search syntax."),
-	})
-	listIssues := tool("list_issues", "List issues in a GitHub repository.")
-	listIssues.Parameters = params(map[string]any{
-		"owner": obj("string", "Repository owner login."),
-		"repo":  obj("string", "Repository name."),
-		"state": obj("string", "Filter by issue state: open, closed, or all."),
-	})
-	createIssue := tool("create_issue", "Create a new issue in a GitHub repository.")
-	createIssue.Parameters = params(map[string]any{
-		"owner": obj("string", "Repository owner login."),
-		"repo":  obj("string", "Repository name."),
-		"title": obj("string", "Title of the new issue."),
-		"body":  obj("string", "Body text of the new issue."),
-	})
-	getPullRequest := tool("get_pull_request", "Get details of a specific pull request in a GitHub repository.")
-	getPullRequest.Parameters = params(map[string]any{
-		"owner":       obj("string", "Repository owner login."),
-		"repo":        obj("string", "Repository name."),
-		"pull_number": obj("integer", "Pull request number to fetch."),
-	})
-	listCommits := tool("list_commits", "List commits in a GitHub repository.")
-	listCommits.Parameters = params(map[string]any{
-		"owner": obj("string", "Repository owner login."),
-		"repo":  obj("string", "Repository name."),
-		"sha":   obj("string", "Optional branch or commit SHA to start listing from."),
-	})
-	createPRComment := tool("create_pull_request_comment", "Post a comment on a GitHub pull request.")
-	createPRComment.Parameters = params(map[string]any{
-		"owner":       obj("string", "Repository owner login."),
-		"repo":        obj("string", "Repository name."),
-		"pull_number": obj("integer", "Pull request number to comment on."),
-		"body":        obj("string", "Comment text to post."),
-	})
+	tools := embeddedToolsMap("github")
+	getIssue := getOrFallbackTool(tools, "get_issue", tool("get_issue", "Get details of a specific issue in a GitHub repository."))
+	searchRepos := getOrFallbackTool(tools, "search_repositories", tool("search_repositories", "Search for GitHub repositories by query."))
+	listIssues := getOrFallbackTool(tools, "list_issues", tool("list_issues", "List issues in a GitHub repository."))
+	createIssue := getOrFallbackTool(tools, "create_issue", tool("create_issue", "Create a new issue in a GitHub repository."))
+	getPullRequest := getOrFallbackTool(tools, "get_pull_request", tool("get_pull_request", "Get details of a specific pull request in a GitHub repository."))
+	listCommits := getOrFallbackTool(tools, "list_commits", tool("list_commits", "List commits in a GitHub repository."))
+	createPRComment := getOrFallbackTool(tools, "create_pull_request_comment", tool("create_pull_request_comment", "Post a comment on a GitHub pull request."))
 	return []domain.Task{
 		{
 			ID:       "gh_get_issue_001",
@@ -163,20 +149,11 @@ func githubTasks() []domain.Task {
 }
 
 func sqliteTasks() []domain.Task {
-	listTables := tool("list_tables", "List all tables in the SQLite database.")
-	listTables.Parameters = params(nil)
-	describeTable := tool("describe_table", "Describe the columns of a specific table.")
-	describeTable.Parameters = params(map[string]any{
-		"table_name": obj("string", "Name of the table to describe."),
-	})
-	readQuery := tool("read_query", "Execute a read-only SQL SELECT query.")
-	readQuery.Parameters = params(map[string]any{
-		"query": obj("string", "SQL SELECT query to execute."),
-	})
-	executeQuery := tool("execute_query", "Execute a write SQL statement such as INSERT or UPDATE.")
-	executeQuery.Parameters = params(map[string]any{
-		"query": obj("string", "SQL write statement to execute."),
-	})
+	tools := embeddedToolsMap("sqlite")
+	listTables := getOrFallbackTool(tools, "list_tables", tool("list_tables", "List all tables in the SQLite database."))
+	describeTable := getOrFallbackTool(tools, "describe_table", tool("describe_table", "Describe the columns of a specific table."))
+	readQuery := getOrFallbackTool(tools, "read_query", tool("read_query", "Execute a read-only SQL SELECT query."))
+	executeQuery := getOrFallbackTool(tools, "execute_query", tool("execute_query", "Execute a write SQL statement such as INSERT or UPDATE."))
 	return []domain.Task{
 		{
 			ID:       "sq_list_tables_001",
@@ -214,37 +191,14 @@ func sqliteTasks() []domain.Task {
 }
 
 func filesystemTasks() []domain.Task {
-	listDir := tool("list_directory", "List the contents of a directory.")
-	listDir.Parameters = params(map[string]any{
-		"path": obj("string", "Directory path to list."),
-	})
-	readFile := tool("read_file", "Read the complete contents of a single file.")
-	readFile.Parameters = params(map[string]any{
-		"path": obj("string", "Path of the file to read."),
-	})
-	searchFiles := tool("search_files", "Recursively search for files matching a pattern.")
-	searchFiles.Parameters = params(map[string]any{
-		"path":    obj("string", "Root directory to start the search from."),
-		"pattern": obj("string", "Pattern to match file names against."),
-	})
-	writeFile := tool("write_file", "Create or overwrite a file with the given contents.")
-	writeFile.Parameters = params(map[string]any{
-		"path":    obj("string", "Path of the file to write."),
-		"content": obj("string", "Full contents to write to the file."),
-	})
-	moveFile := tool("move_file", "Move or rename a file to a new location.")
-	moveFile.Parameters = params(map[string]any{
-		"source":      obj("string", "Path of the file to move."),
-		"destination": obj("string", "New path for the file."),
-	})
-	getFileInfo := tool("get_file_info", "Get metadata about a file such as size and modification time.")
-	getFileInfo.Parameters = params(map[string]any{
-		"path": obj("string", "Path of the file to inspect."),
-	})
-	deleteFile := tool("delete_file", "Permanently delete a file.")
-	deleteFile.Parameters = params(map[string]any{
-		"path": obj("string", "Path of the file to delete."),
-	})
+	tools := embeddedToolsMap("filesystem")
+	listDir := getOrFallbackTool(tools, "list_directory", tool("list_directory", "List the contents of a directory."))
+	readFile := getOrFallbackTool(tools, "read_file", tool("read_file", "Read the complete contents of a single file."))
+	searchFiles := getOrFallbackTool(tools, "search_files", tool("search_files", "Recursively search for files matching a pattern."))
+	writeFile := getOrFallbackTool(tools, "write_file", tool("write_file", "Create or overwrite a file with the given contents."))
+	moveFile := getOrFallbackTool(tools, "move_file", tool("move_file", "Move or rename a file to a new location."))
+	getFileInfo := getOrFallbackTool(tools, "get_file_info", tool("get_file_info", "Get metadata about a file such as size and modification time."))
+	deleteFile := getOrFallbackTool(tools, "delete_file", tool("delete_file", "Permanently delete a file."))
 	return []domain.Task{
 		{
 			ID:       "fs_list_dir_001",

@@ -29,10 +29,15 @@ func newBuiltinProxy(level domain.CompressionLevel, threadFields map[string][]st
 	compressed := compressTools(level, tools)
 	schemas := make(map[string]map[string]any, len(tools))
 	for _, t := range tools {
+		schema := t.InputSchema
+		if len(schema) == 0 {
+			schema = t.Parameters
+		}
 		schemas[t.Name] = map[string]any{
 			"name":        t.Name,
 			"description": t.Description,
-			"parameters":  t.Parameters,
+			"inputSchema": schema,
+			"parameters":  schema,
 		}
 	}
 	return &builtinProxy{level: level, tools: compressed, schemas: schemas, threadFields: threadFields}
@@ -113,7 +118,15 @@ func callsOf(p Proxy) []domain.ToolCall {
 func compressTools(level domain.CompressionLevel, tools []domain.ToolDefinition) []domain.ToolDefinition {
 	out := make([]domain.ToolDefinition, 0, len(tools))
 	for _, t := range tools {
-		ct := domain.ToolDefinition{Name: t.Name, Parameters: cloneParams(t.Parameters)}
+		params := t.InputSchema
+		if len(params) == 0 {
+			params = t.Parameters
+		}
+		ct := domain.ToolDefinition{
+			Name:        t.Name,
+			Parameters:  cloneParams(params),
+			InputSchema: cloneParams(params),
+		}
 		switch level {
 		case domain.LevelNone:
 			ct.Description = t.Description
@@ -129,6 +142,7 @@ func compressTools(level domain.CompressionLevel, tools []domain.ToolDefinition)
 		case domain.LevelMax:
 			continue // replaced wholesale below
 		}
+		ct.InputSchema = ct.Parameters
 		out = append(out, ct)
 	}
 	if level == domain.LevelMax {
@@ -148,6 +162,7 @@ func metaTool(name string) domain.ToolDefinition {
 			"arguments": obj("object", "Argument payload."),
 		})
 	}
+	t.InputSchema = t.Parameters
 	return t
 }
 

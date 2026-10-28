@@ -56,12 +56,13 @@ func slackListUsers() domain.ToolDefinition {
 }
 
 func slackTasks() []domain.Task {
-	listChannels := slackListChannels()
-	postMessage := slackPostMessage()
-	history := slackChannelHistory()
-	replyThread := slackReplyThread()
-	addReaction := slackAddReaction()
-	listUsers := slackListUsers()
+	tools := embeddedToolsMap("slack")
+	listChannels := getOrFallbackTool(tools, "list_channels", slackListChannels())
+	postMessage := getOrFallbackTool(tools, "post_message", slackPostMessage())
+	history := getOrFallbackTool(tools, "get_channel_history", slackChannelHistory())
+	replyThread := getOrFallbackTool(tools, "reply_to_thread", slackReplyThread())
+	addReaction := getOrFallbackTool(tools, "add_reaction", slackAddReaction())
+	listUsers := getOrFallbackTool(tools, "list_users", slackListUsers())
 	return []domain.Task{
 		{
 			ID:       "sl_list_channels_001",

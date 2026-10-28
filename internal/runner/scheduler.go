@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"time"
@@ -32,6 +33,9 @@ type Scheduler struct {
 
 // NewScheduler wires a scheduler for a model backend.
 func NewScheduler(model inference.Model, newProxy ProxyFactory, log *slog.Logger) *Scheduler {
+	if log == nil {
+		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	return &Scheduler{
 		model:     model,
 		newProxy:  newProxy,
@@ -167,7 +171,9 @@ func (s *Scheduler) scoreTask(res *domain.CellResult, task domain.Task, executed
 	}
 }
 
-func systemPrompt(level domain.CompressionLevel, tools []domain.ToolDefinition, catalogue ...string) string {
+// SystemPrompt renders the tool-use instructions and active tool definitions
+// formatted as real MCP schemas that a model connected to an MCP server sees.
+func SystemPrompt(level domain.CompressionLevel, tools []domain.ToolDefinition, catalogue ...string) string {
 	toolsJSON, err := json.Marshal(tools)
 	if err != nil {
 		toolsJSON = []byte("[]")
@@ -185,6 +191,20 @@ func systemPrompt(level domain.CompressionLevel, tools []domain.ToolDefinition, 
 		}
 	}
 	return sb.String()
+}
+
+func systemPrompt(level domain.CompressionLevel, tools []domain.ToolDefinition, catalogue ...string) string {
+	return SystemPrompt(level, tools, catalogue...)
+}
+
+// AssistantToolCall creates an assistant message containing the specified tool invocation.
+func AssistantToolCall(call domain.ToolCall) inference.Message {
+	return assistantToolCall(call)
+}
+
+// ToolResultMessage formats a tool execution output into a message for subsequent turns.
+func ToolResultMessage(callID string, result any, err error) inference.Message {
+	return toolResultMessage(callID, result, err)
 }
 
 func schemaTokens(tools []domain.ToolDefinition) int {

@@ -116,6 +116,7 @@ func (g *Generator) padPool(reserved map[string]bool, n int) []domain.ToolDefini
 			reserved[name] = true
 			t := tool(name, fmt.Sprintf("Manages %s resources in the workspace.", noun))
 			t.Parameters = params(map[string]any{"id": obj("string", "Resource identifier.")})
+			t.InputSchema = t.Parameters
 			pool = append(pool, t)
 		}
 	}
@@ -134,6 +135,7 @@ func (g *Generator) ambiguousNameTask(id int) domain.Task {
 	withID := func(name, desc string) domain.ToolDefinition {
 		t := tool(name, desc)
 		t.Parameters = params(map[string]any{"id": obj("integer", "Numeric user identifier.")})
+		t.InputSchema = t.Parameters
 		return t
 	}
 	catalogue := []domain.ToolDefinition{
@@ -163,17 +165,21 @@ func (g *Generator) ambiguousNameTask(id int) domain.Task {
 // overlappingSchemaTask builds tools sharing parameter names but not types.
 func (g *Generator) overlappingSchemaTask(id int) domain.Task {
 	a := tool("update_issue_status", "Updates the status field of an issue.")
-	a.Parameters = params(map[string]any{
+	a.Parameters = paramsWithRequired(map[string]any{
 		"id":     obj("string", "Issue identifier, e.g. ISS-104."),
 		"filter": obj("object", "Structured status transition filter."),
 		"limit":  obj("integer", "Maximum number of audit rows to return."),
-	})
+	}, []string{"id"})
+	a.InputSchema = a.Parameters
+
 	b := tool("query_audit_log", "Queries the audit log for issue events.")
-	b.Parameters = params(map[string]any{
+	b.Parameters = paramsWithRequired(map[string]any{
 		"id":     obj("integer", "Numeric log entry id."),
 		"filter": obj("string", "Free-text log filter expression."),
 		"limit":  obj("integer", "Row limit."),
-	})
+	}, []string{"filter", "id", "limit"})
+	b.InputSchema = b.Parameters
+
 	prompt := "Call update_issue_status exactly once. Arguments: id: ISS-104. Pass no optional parameters."
 	if g.opts.PromptStyle == StyleIntent {
 		prompt = "We need the status field updated on issue ISS-104, please use the update issue status tool to take care of it."
@@ -191,11 +197,15 @@ func (g *Generator) overlappingSchemaTask(id int) domain.Task {
 func (g *Generator) multiHopTask(id int) domain.Task {
 	s1 := tool("create_session", "Creates a session and returns its session_id.")
 	s1.Parameters = params(map[string]any{"workspace": obj("string", "Workspace name for the new session.")})
+	s1.InputSchema = s1.Parameters
+
 	s2 := tool("publish_report", "Publishes a report into an existing session.")
 	s2.Parameters = params(map[string]any{
 		"report":     obj("string", "Report identifier to publish."),
 		"session_id": obj("string", "Target session receiving the report."),
 	})
+	s2.InputSchema = s2.Parameters
+
 	prompt := "Step 1: call create_session. Arguments: workspace: alpha. Step 2: call publish_report. Arguments: report: q3, session_id: <from:create_session.result_id>."
 	if g.opts.PromptStyle == StyleIntent {
 		prompt = "First, create a new session in workspace 'alpha' with the create session tool and give me its session id. Then use the publish report tool to publish the quarterly report 'q3' into that session."
@@ -214,19 +224,27 @@ func (g *Generator) multiHopTask(id int) domain.Task {
 }
 
 func tool(name, desc string) domain.ToolDefinition {
-	return domain.ToolDefinition{Name: name, Description: desc, Parameters: params(nil)}
+	p := params(nil)
+	return domain.ToolDefinition{Name: name, Description: desc, Parameters: p, InputSchema: p}
 }
 
 func params(m map[string]any) map[string]any {
+	return paramsWithRequired(m, sortedKeys(m))
+}
+
+func paramsWithRequired(m map[string]any, req []string) map[string]any {
 	if m == nil {
 		m = map[string]any{}
 	}
-	out := map[string]any{
+	if req == nil {
+		req = []string{}
+	}
+	sort.Strings(req)
+	return map[string]any{
 		"type":       "object",
 		"properties": m,
-		"required":   sortedKeys(m),
+		"required":   req,
 	}
-	return out
 }
 
 func obj(typ, desc string) map[string]any {

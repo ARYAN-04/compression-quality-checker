@@ -51,11 +51,12 @@ func gitBranch() domain.ToolDefinition {
 }
 
 func gitTasks() []domain.Task {
-	status := gitStatus()
-	diff := gitDiff()
-	commit := gitCommit()
-	log := gitLog()
-	branch := gitBranch()
+	tools := embeddedToolsMap("git")
+	status := getOrFallbackTool(tools, "git_status", gitStatus())
+	diff := getOrFallbackTool(tools, "git_diff", gitDiff())
+	commit := getOrFallbackTool(tools, "git_commit", gitCommit())
+	log := getOrFallbackTool(tools, "git_log", gitLog())
+	branch := getOrFallbackTool(tools, "git_branch", gitBranch())
 
 	return []domain.Task{
 		{

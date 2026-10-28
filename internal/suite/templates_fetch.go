@@ -31,9 +31,10 @@ func fetchExtractHeaders() domain.ToolDefinition {
 }
 
 func fetchTasks() []domain.Task {
-	fetch := fetchTool()
-	extractMarkdown := fetchExtractMarkdown()
-	extractHeaders := fetchExtractHeaders()
+	tools := embeddedToolsMap("fetch")
+	fetch := getOrFallbackTool(tools, "fetch", fetchTool())
+	extractMarkdown := getOrFallbackTool(tools, "extract_markdown", fetchExtractMarkdown())
+	extractHeaders := getOrFallbackTool(tools, "extract_headers", fetchExtractHeaders())
 
 	return []domain.Task{
 		{

@@ -48,11 +48,12 @@ func pupEvaluate() domain.ToolDefinition {
 }
 
 func puppeteerTasks() []domain.Task {
-	navigate := pupNavigate()
-	screenshot := pupScreenshot()
-	click := pupClick()
-	fill := pupFill()
-	evaluate := pupEvaluate()
+	tools := embeddedToolsMap("puppeteer")
+	navigate := getOrFallbackTool(tools, "navigate", pupNavigate())
+	screenshot := getOrFallbackTool(tools, "screenshot", pupScreenshot())
+	click := getOrFallbackTool(tools, "click", pupClick())
+	fill := getOrFallbackTool(tools, "fill", pupFill())
+	evaluate := getOrFallbackTool(tools, "evaluate", pupEvaluate())
 
 	return []domain.Task{
 		{

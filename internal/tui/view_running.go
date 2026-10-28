@@ -3,8 +3,11 @@ package tui
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -48,17 +51,31 @@ func (c *ExecutionController) NextCmd() tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg {
-		select {
-		case cell, ok := <-c.cellChan:
-			if ok {
-				return CellCompletedMsg{Cell: cell, TotalCells: c.totalCells}
+		for {
+			if c.cellChan != nil {
+				select {
+				case cell, ok := <-c.cellChan:
+					if ok {
+						return CellCompletedMsg{Cell: cell, TotalCells: c.totalCells}
+					}
+					c.cellChan = nil
+				default:
+				}
 			}
-		case finish, ok := <-c.finishChan:
-			if ok {
-				return finish
+
+			select {
+			case cell, ok := <-c.cellChan:
+				if ok {
+					return CellCompletedMsg{Cell: cell, TotalCells: c.totalCells}
+				}
+				c.cellChan = nil
+			case finish, ok := <-c.finishChan:
+				if ok {
+					return finish
+				}
+				return nil
 			}
 		}
-		return nil
 	}
 }
 
@@ -98,6 +115,7 @@ func NewRunningViewModel() RunningViewModel {
 	p := progress.New(
 		progress.WithDefaultGradient(),
 		progress.WithWidth(60),
+		progress.WithoutPercentage(),
 	)
 
 	return RunningViewModel{
@@ -140,6 +158,9 @@ func (m RunningViewModel) Update(msg tea.Msg) (RunningViewModel, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case CellCompletedMsg:
+		if m.totalCells == 0 && msg.TotalCells > 0 {
+			m.totalCells = msg.TotalCells
+		}
 		m.completedCells++
 		m.currentLevel = msg.Cell.CompressionLevel
 		m.currentTaskID = msg.Cell.TaskID
@@ -202,8 +223,20 @@ func StartBenchmark(
 	}
 
 	go func() {
-		defer close(cellChan)
+		var closeOnce sync.Once
+		closeCellChan := func() {
+			closeOnce.Do(func() { close(cellChan) })
+		}
+		defer closeCellChan()
 		defer close(finishChan)
+
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if logPath := os.Getenv("CAN_I_COMPRESS_IT_LOG"); logPath != "" {
+			if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+				defer func() { _ = f.Close() }()
+				logger = slog.New(slog.NewTextHandler(f, nil))
+			}
+		}
 
 		sched := runner.NewScheduler(model, func(ctx context.Context, level domain.CompressionLevel) (mcp.Proxy, error) {
 			return mcp.NewProxy(ctx, mcp.Config{
@@ -212,7 +245,7 @@ func StartBenchmark(
 				TargetServer: "suite",
 				ThreadFields: suite.ThreadedFields(tasks),
 			}, suite.UniqueTools(tasks))
-		}, slog.Default())
+		}, logger)
 
 		sched.SetOnCellResult(func(c domain.CellResult) {
 			select {
@@ -222,6 +255,7 @@ func StartBenchmark(
 		})
 
 		cells, err := sched.ExecuteMatrix(ctx, tasks, levels)
+		closeCellChan()
 		if err != nil {
 			finishChan <- RunFinishedMsg{Err: err}
 			return

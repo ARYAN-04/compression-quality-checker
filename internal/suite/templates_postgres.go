@@ -44,11 +44,12 @@ func pgReadQuery() domain.ToolDefinition {
 }
 
 func postgresTasks() []domain.Task {
-	listSchemas := pgListSchemas()
-	listTables := pgListTables()
-	describeTable := pgDescribeTable()
-	executeQuery := pgExecuteQuery()
-	readQuery := pgReadQuery()
+	tools := embeddedToolsMap("postgres")
+	listSchemas := getOrFallbackTool(tools, "list_schemas", pgListSchemas())
+	listTables := getOrFallbackTool(tools, "list_tables", pgListTables())
+	describeTable := getOrFallbackTool(tools, "describe_table", pgDescribeTable())
+	executeQuery := getOrFallbackTool(tools, "execute_query", pgExecuteQuery())
+	readQuery := getOrFallbackTool(tools, "read_query", pgReadQuery())
 
 	return []domain.Task{
 		{

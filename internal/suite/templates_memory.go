@@ -43,11 +43,12 @@ func memReadGraph() domain.ToolDefinition {
 }
 
 func memoryTasks() []domain.Task {
-	createEntities := memCreateEntities()
-	openNodes := memOpenNodes()
-	createRelations := memCreateRelations()
-	searchNodes := memSearchNodes()
-	readGraph := memReadGraph()
+	tools := embeddedToolsMap("memory")
+	createEntities := getOrFallbackTool(tools, "create_entities", memCreateEntities())
+	openNodes := getOrFallbackTool(tools, "open_nodes", memOpenNodes())
+	createRelations := getOrFallbackTool(tools, "create_relations", memCreateRelations())
+	searchNodes := getOrFallbackTool(tools, "search_nodes", memSearchNodes())
+	readGraph := getOrFallbackTool(tools, "read_graph", memReadGraph())
 
 	return []domain.Task{
 		{

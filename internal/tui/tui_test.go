@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -309,6 +311,70 @@ func TestStartBenchmarkMock(t *testing.T) {
 
 	if receivedCells != 2 {
 		t.Fatalf("expected 2 completed cells, got %d", receivedCells)
+	}
+}
+
+type failChatModel struct {
+	inference.Model
+	failOnTask string
+}
+
+func (m failChatModel) Chat(ctx context.Context, msgs []inference.Message, tools []domain.ToolDefinition) (inference.Response, error) {
+	for _, msg := range msgs {
+		if msg.Role == "user" && msg.Content == m.failOnTask {
+			return inference.Response{}, fmt.Errorf("simulated endpoint channel 400 error")
+		}
+	}
+	return m.Model.Chat(ctx, msgs, tools)
+}
+
+func TestStartBenchmarkToleratesEndpointFailure(t *testing.T) {
+	tasks := suite.Builtin()[:2]
+	levels := []domain.CompressionLevel{domain.LevelNone}
+	baseModel := inference.NewMock("test-mock")
+	model := failChatModel{Model: baseModel, failOnTask: tasks[0].Prompt}
+
+	ctrl, cmd := StartBenchmark(
+		model,
+		tasks,
+		levels,
+		"",
+		7.0,
+		"test-suite",
+		"mock",
+		"",
+		"",
+		"",
+	)
+	if ctrl == nil || cmd == nil {
+		t.Fatalf("expected non-nil ctrl and cmd")
+	}
+
+	var cells []domain.CellResult
+	var finished bool
+	for !finished {
+		msg := ctrl.NextCmd()()
+		switch msg := msg.(type) {
+		case CellCompletedMsg:
+			cells = append(cells, msg.Cell)
+		case RunFinishedMsg:
+			if msg.Err != nil {
+				t.Fatalf("run failed with unexpected error: %v", msg.Err)
+			}
+			finished = true
+		default:
+			t.Fatalf("unexpected msg: %T", msg)
+		}
+	}
+
+	if len(cells) != 2 {
+		t.Fatalf("expected 2 completed cells, got %d", len(cells))
+	}
+	if cells[0].SelectionCorrect {
+		t.Errorf("expected failed cell 0 to have SelectionCorrect=false")
+	}
+	if !cells[1].SelectionCorrect {
+		t.Errorf("expected passing cell 1 to have SelectionCorrect=true")
 	}
 }
 

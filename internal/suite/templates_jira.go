@@ -49,11 +49,12 @@ func jiraAddComment() domain.ToolDefinition {
 }
 
 func jiraTasks() []domain.Task {
-	getIssue := jiraGetIssue()
-	searchJQL := jiraSearchJQL()
-	createIssue := jiraCreateIssue()
-	updateStatus := jiraUpdateStatus()
-	addComment := jiraAddComment()
+	tools := embeddedToolsMap("jira")
+	getIssue := getOrFallbackTool(tools, "get_issue", jiraGetIssue())
+	searchJQL := getOrFallbackTool(tools, "search_issues_jql", jiraSearchJQL())
+	createIssue := getOrFallbackTool(tools, "create_issue", jiraCreateIssue())
+	updateStatus := getOrFallbackTool(tools, "update_issue_status", jiraUpdateStatus())
+	addComment := getOrFallbackTool(tools, "add_comment", jiraAddComment())
 	return []domain.Task{
 		{
 			ID:       "jr_get_issue_001",

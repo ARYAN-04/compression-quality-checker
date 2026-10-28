@@ -4,6 +4,7 @@ package domain
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 )
 
@@ -57,7 +58,59 @@ type Task struct {
 type ToolDefinition struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
-	Parameters  map[string]any `json:"parameters"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
+	InputSchema map[string]any `json:"inputSchema,omitempty"`
+}
+
+// UnmarshalJSON tolerates both the standard MCP inputSchema field and
+// the legacy parameters format, keeping both fields in sync.
+func (t *ToolDefinition) UnmarshalJSON(b []byte) error {
+	type rawDef struct {
+		Name        string         `json:"name"`
+		Description string         `json:"description"`
+		Parameters  map[string]any `json:"parameters"`
+		InputSchema map[string]any `json:"inputSchema"`
+	}
+	var raw rawDef
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	t.Name = raw.Name
+	t.Description = raw.Description
+	schema := raw.InputSchema
+	if len(schema) == 0 {
+		schema = raw.Parameters
+	}
+	if schema == nil {
+		schema = map[string]any{"type": "object", "properties": map[string]any{}}
+	}
+	t.Parameters = schema
+	t.InputSchema = schema
+	return nil
+}
+
+// MarshalJSON guarantees both inputSchema (MCP standard) and parameters
+// (OpenAI compatibility) are always emitted for tool callers.
+func (t ToolDefinition) MarshalJSON() ([]byte, error) {
+	schema := t.InputSchema
+	if len(schema) == 0 {
+		schema = t.Parameters
+	}
+	if schema == nil {
+		schema = map[string]any{"type": "object", "properties": map[string]any{}}
+	}
+	type rawDef struct {
+		Name        string         `json:"name"`
+		Description string         `json:"description"`
+		InputSchema map[string]any `json:"inputSchema"`
+		Parameters  map[string]any `json:"parameters"`
+	}
+	return json.Marshal(rawDef{
+		Name:        t.Name,
+		Description: t.Description,
+		InputSchema: schema,
+		Parameters:  schema,
+	})
 }
 
 // ExpectedCall is the ground truth for a single tool invocation.
