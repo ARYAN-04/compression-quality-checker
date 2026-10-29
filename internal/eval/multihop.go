@@ -37,20 +37,32 @@ func VerifyChain(expected []domain.ExpectedCall, executed []domain.ToolCall, ret
 func resolveThreaded(args map[string]any, returns []map[string]any) map[string]any {
 	out := make(map[string]any, len(args))
 	for k, v := range args {
-		ref, ok := v.(string)
-		if !ok || !strings.HasPrefix(ref, "<from:") {
-			out[k] = v
-			continue
-		}
-		path := strings.TrimSuffix(strings.TrimPrefix(ref, "<from:"), ">")
-		tool, field, ok := strings.Cut(path, ".")
-		if !ok {
-			out[k] = v
-			continue
-		}
-		out[k] = lookupField(returns, tool, field)
+		out[k] = resolveValue(v, returns)
 	}
 	return out
+}
+
+func resolveValue(v any, returns []map[string]any) any {
+	switch val := v.(type) {
+	case string:
+		if !strings.HasPrefix(val, "<from:") {
+			return val
+		}
+		path := strings.TrimSuffix(strings.TrimPrefix(val, "<from:"), ">")
+		tool, field, ok := strings.Cut(path, ".")
+		if !ok {
+			return val
+		}
+		return lookupField(returns, tool, field)
+	case []any:
+		out := make([]any, len(val))
+		for i, item := range val {
+			out[i] = resolveValue(item, returns)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 func lookupField(returns []map[string]any, tool, field string) any {

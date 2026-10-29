@@ -4,10 +4,11 @@ import (
 	"can-i-compress-it/internal/domain"
 )
 
-// Builtin returns the embedded synthetic_v1 suite used when no suite
-// file exists, so the harness runs out of the box.
+// Builtin returns the canonical 30-task benchmark suite built from embedded
+// MCP server schemas across ambiguous_name, overlapping_schema, and multihop
+// categories, replacing synthetic tasks with realistic natural-language goals.
 func Builtin() []domain.Task {
-	return NewGenerator(Options{NumTasks: 30, Ambiguity: "high", Seed: 42}).Generate()
+	return BuiltinTasks()
 }
 
 // UniqueTools merges the catalogues of all tasks into one deduplicated

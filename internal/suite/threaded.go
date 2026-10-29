@@ -35,18 +35,28 @@ func ThreadedFields(tasks []domain.Task) map[string][]string {
 // args under its source tool key.
 func collectThreaded(fields map[string]map[string]bool, args map[string]any) {
 	for _, v := range args {
-		ref, ok := v.(string)
-		if !ok || !strings.HasPrefix(ref, "<from:") {
-			continue
+		collectValue(fields, v)
+	}
+}
+
+func collectValue(fields map[string]map[string]bool, v any) {
+	switch val := v.(type) {
+	case string:
+		if !strings.HasPrefix(val, "<from:") {
+			return
 		}
-		path := strings.TrimSuffix(strings.TrimPrefix(ref, "<from:"), ">")
+		path := strings.TrimSuffix(strings.TrimPrefix(val, "<from:"), ">")
 		tool, field, ok := strings.Cut(path, ".")
 		if !ok || field == "" {
-			continue
+			return
 		}
 		if fields[tool] == nil {
 			fields[tool] = map[string]bool{}
 		}
 		fields[tool][field] = true
+	case []any:
+		for _, item := range val {
+			collectValue(fields, item)
+		}
 	}
 }

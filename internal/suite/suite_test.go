@@ -2,6 +2,7 @@ package suite
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 
 	"can-i-compress-it/internal/domain"
@@ -40,6 +41,93 @@ func TestCategoriesCoverAllThree(t *testing.T) {
 		if !cats[want] {
 			t.Fatalf("missing category %s", want)
 		}
+	}
+}
+
+func TestBuiltinSuiteQuality(t *testing.T) {
+	tasks := Builtin()
+	if len(tasks) != 30 {
+		t.Fatalf("expected 30 tasks in Builtin(), got %d", len(tasks))
+	}
+
+	catCounts := map[string]int{}
+	taskIDs := map[string]bool{}
+	prompts := map[string]bool{}
+
+	for i, task := range tasks {
+		if task.ID == "" {
+			t.Fatalf("task %d: empty ID", i)
+		}
+		if taskIDs[task.ID] {
+			t.Fatalf("duplicate task ID: %s", task.ID)
+		}
+		taskIDs[task.ID] = true
+
+		if task.Prompt == "" {
+			t.Fatalf("task %s: empty prompt", task.ID)
+		}
+		if prompts[task.Prompt] {
+			t.Fatalf("duplicate prompt in task %s", task.ID)
+		}
+		prompts[task.Prompt] = true
+
+		catCounts[task.Category]++
+
+		if len(task.Tools) < 2 {
+			t.Fatalf("task %s: catalogue must have >= 2 tools, got %d", task.ID, len(task.Tools))
+		}
+
+		// Ensure tools are valid
+		for _, tl := range task.Tools {
+			if tl.Name == "" || tl.Description == "" {
+				t.Fatalf("task %s: tool has empty name/description: %+v", task.ID, tl)
+			}
+		}
+
+		// Prompt must NOT leak exact tool name (e.g. "Call get_issue" or "use get_issue tool")
+		for _, tl := range task.Tools {
+			if strings.Contains(strings.ToLower(task.Prompt), "call "+strings.ToLower(tl.Name)) {
+				t.Fatalf("task %s leaks tool name with 'Call %s'", task.ID, tl.Name)
+			}
+			if strings.Contains(strings.ToLower(task.Prompt), strings.ToLower(tl.Name)+" tool") {
+				t.Fatalf("task %s leaks tool name with '%s tool'", task.ID, tl.Name)
+			}
+		}
+
+		if task.Category == domain.CategoryMultiHop {
+			if len(task.MultiHop) < 2 {
+				t.Fatalf("multihop task %s must have >= 2 hops, got %d", task.ID, len(task.MultiHop))
+			}
+			if task.Expected.ToolName != task.MultiHop[0].ToolName {
+				t.Fatalf("multihop task %s: Expected.ToolName (%s) != MultiHop[0].ToolName (%s)",
+					task.ID, task.Expected.ToolName, task.MultiHop[0].ToolName)
+			}
+		}
+	}
+
+	if catCounts[domain.CategoryAmbiguousName] != 10 {
+		t.Fatalf("expected 10 ambiguous_name tasks, got %d", catCounts[domain.CategoryAmbiguousName])
+	}
+	if catCounts[domain.CategoryOverlappingSchem] != 10 {
+		t.Fatalf("expected 10 overlapping_schema tasks, got %d", catCounts[domain.CategoryOverlappingSchem])
+	}
+	if catCounts[domain.CategoryMultiHop] != 10 {
+		t.Fatalf("expected 10 multihop tasks, got %d", catCounts[domain.CategoryMultiHop])
+	}
+}
+
+func TestSyncSyntheticV1(t *testing.T) {
+	tasks := Builtin()
+	path := "../../suites/synthetic_v1.json"
+	if err := Save(path, tasks); err != nil {
+		t.Fatalf("failed to save synthetic_v1.json: %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("failed to load saved synthetic_v1.json: %v", err)
+	}
+	if len(loaded) != len(tasks) {
+		t.Fatalf("saved suite has %d tasks, want %d", len(loaded), len(tasks))
 	}
 }
 

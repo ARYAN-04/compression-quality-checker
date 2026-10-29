@@ -81,6 +81,12 @@ var quotedRe = regexp.MustCompile(`['"]([A-Za-z0-9][A-Za-z0-9 _.-]*?)['"]`)
 // dashedRe captures uppercase dashed identifiers such as ISS-104.
 var dashedRe = regexp.MustCompile(`\b[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+\b`)
 
+// pathRe captures absolute file system paths like /var/log/nginx.
+var pathRe = regexp.MustCompile(`/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*`)
+
+// urlRe captures web URLs like https://api.stripe.com.
+var urlRe = regexp.MustCompile(`https?://[^\s'"]+`)
+
 // intTokenRe captures bare integer values.
 var intTokenRe = regexp.MustCompile(`\b\d+\b`)
 
@@ -143,6 +149,12 @@ func (m *Mock) bindIntentArgs(prompt string, t domain.ToolDefinition, msgs []Mes
 	used := usedValues(msgs)
 	stringCandidates := quotedValues(prompt)
 	for _, tok := range dashedRe.FindAllString(prompt, -1) {
+		stringCandidates = append(stringCandidates, tok)
+	}
+	for _, tok := range pathRe.FindAllString(prompt, -1) {
+		stringCandidates = append(stringCandidates, tok)
+	}
+	for _, tok := range urlRe.FindAllString(prompt, -1) {
 		stringCandidates = append(stringCandidates, tok)
 	}
 	intCandidates := intTokens(stripDashed(prompt))
@@ -247,6 +259,23 @@ func metaTarget(prompt string, msgs []Message) string {
 	}
 	if target := next(descriptive); target != "" {
 		return target
+	}
+	for _, msg := range msgs {
+		if msg.Role == "system" && strings.Contains(msg.Content, "Available tools in catalogue: [") {
+			start := strings.Index(msg.Content, "Available tools in catalogue: [") + len("Available tools in catalogue: [")
+			end := strings.Index(msg.Content[start:], "]")
+			if end >= 0 {
+				raw := msg.Content[start : start+end]
+				tools := strings.Split(raw, ",")
+				var cleaned []string
+				for _, t := range tools {
+					cleaned = append(cleaned, strings.TrimSpace(t))
+				}
+				if target := next(cleaned); target != "" {
+					return target
+				}
+			}
+		}
 	}
 	if len(invoked) > 0 {
 		return invoked[len(invoked)-1] // single-step prompts keep their tool
@@ -392,20 +421,32 @@ func (m *Mock) extractArgs(prompt string) map[string]any {
 func (m *Mock) resolveThreaded(args map[string]any, msgs []Message) map[string]any {
 	out := make(map[string]any, len(args))
 	for k, v := range args {
-		s, ok := v.(string)
-		if !ok || !strings.HasPrefix(s, "<from:") {
-			out[k] = v
-			continue
-		}
-		path := strings.TrimSuffix(strings.TrimPrefix(s, "<from:"), ">")
-		tool, field, ok := strings.Cut(path, ".")
-		if !ok {
-			out[k] = v
-			continue
-		}
-		out[k] = lookupInResults(msgs, tool, field)
+		out[k] = resolveMockValue(v, msgs)
 	}
 	return out
+}
+
+func resolveMockValue(v any, msgs []Message) any {
+	switch val := v.(type) {
+	case string:
+		if !strings.HasPrefix(val, "<from:") {
+			return val
+		}
+		path := strings.TrimSuffix(strings.TrimPrefix(val, "<from:"), ">")
+		tool, field, ok := strings.Cut(path, ".")
+		if !ok {
+			return val
+		}
+		return lookupInResults(msgs, tool, field)
+	case []any:
+		out := make([]any, len(val))
+		for i, item := range val {
+			out[i] = resolveMockValue(item, msgs)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 func lookupInResults(msgs []Message, tool, field string) any {
