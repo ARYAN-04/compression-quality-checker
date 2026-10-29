@@ -80,9 +80,19 @@ echo [2/2] Running full factorial benchmark matrix across all 5 compression tier
 echo (This may take several minutes depending on your GPU/model speed)
 echo.
 
-set REPORT_FILE=results\%MODEL%_report.html
-set JSON_FILE=results\%MODEL%_results.json
-set TABLE_FILE=results\%MODEL%_table.md
+rem Sanitize model name for filename safety (strip slashes, colons, spaces)
+set SAFE_MODEL=%MODEL:/=_%
+set SAFE_MODEL=%SAFE_MODEL:\=_%
+set SAFE_MODEL=%SAFE_MODEL::=_%
+set SAFE_MODEL=%SAFE_MODEL: =_%
+
+rem Generate ISO timestamp (YYYYMMDD_HHMMSS) so subsequent runs never overwrite
+for /f %%a in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set TIMESTAMP=%%a
+if "%TIMESTAMP%"=="" set TIMESTAMP=%RANDOM%
+
+set REPORT_FILE=results\%SAFE_MODEL%_%TIMESTAMP%_report.html
+set JSON_FILE=results\%SAFE_MODEL%_%TIMESTAMP%_results.json
+set TABLE_FILE=results\%SAFE_MODEL%_%TIMESTAMP%_table.md
 
 .\can-i-compress-it.exe run ^
     --endpoint "%ENDPOINT%" ^
@@ -102,8 +112,10 @@ if %errorlevel% neq 0 (
 echo.
 echo =========================================================
 echo [SUCCESS] Benchmark completed successfully!
+copy /y "%REPORT_FILE%" "results\%SAFE_MODEL%_latest_report.html" >nul
 echo Reports generated:
 echo   - Interactive HTML: %REPORT_FILE%
+echo   - Latest HTML Copy: results\%SAFE_MODEL%_latest_report.html
 echo   - JSON Data Trace:  %JSON_FILE%
 echo   - Markdown Table:   %TABLE_FILE%
 echo.

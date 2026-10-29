@@ -312,6 +312,7 @@ A pre-configured Windows script is provided in `scripts\run_windows.bat`.
    - Verifies or compiles `can-i-compress-it.exe`.
    - Runs a smoke test to confirm LM Studio is responding.
    - Executes the 150-cell benchmark sweep across all 5 compression levels (`none`, `low`, `medium`, `high`, `max`).
+   - Automatically sanitizes model names and appends timestamps (e.g. `results\<model>_<timestamp>_results.json`) so subsequent model tests never overwrite each other.
    - Automatically opens the resulting interactive HTML report in your web browser (Edge/Chrome).
 3. To test a different model name or remote machine IP, pass them as arguments:
    ```cmd
