@@ -234,7 +234,8 @@ func (m CompressionStepModel) CompressorBinary() string {
 		}
 	} else if strings.HasPrefix(bin, "~/") || strings.HasPrefix(bin, `~\`) {
 		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, bin[2:])
+			rel := filepath.FromSlash(strings.ReplaceAll(bin[2:], `\`, "/"))
+			return filepath.Join(home, rel)
 		}
 	}
 	return bin

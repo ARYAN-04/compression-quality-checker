@@ -11,12 +11,13 @@ func cleanPath(p string) (string, error) {
 	if p == "~" {
 		return os.UserHomeDir()
 	}
-	if strings.HasPrefix(p, "~/") {
+	if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("user home dir: %w", err)
 		}
-		p = filepath.Join(home, p[2:])
+		rel := filepath.FromSlash(strings.ReplaceAll(p[2:], `\`, "/"))
+		p = filepath.Join(home, rel)
 	}
 	dir := filepath.Dir(p)
 	if dir != "" && dir != "." {
@@ -34,4 +35,3 @@ func writeFileString(path, content string) error {
 	}
 	return os.WriteFile(clean, []byte(content), 0o644)
 }
-

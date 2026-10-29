@@ -30,6 +30,12 @@ func TestExpandHome(t *testing.T) {
 		t.Fatalf("expandHome(~/bin/mcp-compressor) = (%q, %v), want (%q, nil)", got, err, want)
 	}
 
+	got, err = expandHome(`~\bin\mcp-compressor`)
+	wantWin := filepath.Join(home, "bin", "mcp-compressor")
+	if err != nil || got != wantWin {
+		t.Fatalf("expandHome(~\\bin\\mcp-compressor) = (%q, %v), want (%q, nil)", got, err, wantWin)
+	}
+
 	got, err = expandHome("/usr/local/bin/mcp-compressor")
 	if err != nil || got != "/usr/local/bin/mcp-compressor" {
 		t.Fatalf("expandHome(abs) = (%q, %v), want abs path", got, err)

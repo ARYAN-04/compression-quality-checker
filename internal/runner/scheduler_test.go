@@ -142,4 +142,3 @@ func TestSchedulerToleratesModelChatError(t *testing.T) {
 		t.Errorf("expected cell 1 to pass")
 	}
 }
-
