@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -128,6 +129,17 @@ func NewProviderStepModel() ProviderStepModel {
 	m.paramsInput.PromptStyle = StyleLabel
 
 	m.applyPreset(0)
+
+	if envEndpoint := os.Getenv("CAN_I_COMPRESS_IT_ENDPOINT"); envEndpoint != "" {
+		m.endpointInput.SetValue(envEndpoint)
+	}
+	if envModel := os.Getenv("CAN_I_COMPRESS_IT_MODEL"); envModel != "" {
+		m.modelInput.SetValue(envModel)
+	}
+	if envParams := os.Getenv("CAN_I_COMPRESS_IT_PARAMS_B"); envParams != "" {
+		m.paramsInput.SetValue(envParams)
+	}
+
 	return m
 }
 

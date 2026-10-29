@@ -3,6 +3,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -51,17 +52,28 @@ func NewAppModel() AppModel {
 	}
 }
 
+type autoRunMsg struct{}
+
 // Init sets up initial tea commands.
 func (m AppModel) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		tea.EnterAltScreen,
 		m.runningView.Init(),
-	)
+	}
+	if os.Getenv("CAN_I_COMPRESS_IT_AUTORUN") == "1" || os.Getenv("CAN_I_COMPRESS_IT_AUTORUN") == "true" {
+		cmds = append(cmds, func() tea.Msg { return autoRunMsg{} })
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update handles message dispatch across all wizard steps.
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case autoRunMsg:
+		if m.step != StepRunning {
+			return m.runFullFactorial()
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height

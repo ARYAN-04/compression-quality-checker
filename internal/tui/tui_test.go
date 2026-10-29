@@ -486,3 +486,33 @@ func TestSuiteStepTextInputKeyRouting(t *testing.T) {
 		t.Fatalf("expected template[0].Selected to toggle on space in SuiteModeTemplates")
 	}
 }
+
+func TestTUI_EnvironmentOverrides(t *testing.T) {
+	t.Setenv("CAN_I_COMPRESS_IT_MODEL", "custom-model")
+	t.Setenv("CAN_I_COMPRESS_IT_ENDPOINT", "http://127.0.0.1:9999/v1")
+	t.Setenv("CAN_I_COMPRESS_IT_PARAMS_B", "12.5")
+	t.Setenv("CAN_I_COMPRESS_IT_AUTORUN", "1")
+
+	app := NewAppModel()
+	if got := app.providerStep.modelInput.Value(); got != "custom-model" {
+		t.Fatalf("expected modelInput 'custom-model', got %q", got)
+	}
+	if got := app.providerStep.endpointInput.Value(); got != "http://127.0.0.1:9999/v1" {
+		t.Fatalf("expected endpointInput 'http://127.0.0.1:9999/v1', got %q", got)
+	}
+	if got := app.providerStep.paramsInput.Value(); got != "12.5" {
+		t.Fatalf("expected paramsInput '12.5', got %q", got)
+	}
+
+	updated, _ := app.Update(autoRunMsg{})
+	updatedApp, ok := updated.(AppModel)
+	if !ok {
+		t.Fatalf("expected AppModel, got %T", updated)
+	}
+	if updatedApp.step != StepRunning {
+		t.Fatalf("expected step StepRunning after autoRunMsg, got %v", updatedApp.step)
+	}
+	if updatedApp.execCtrl != nil {
+		updatedApp.execCtrl.Cancel()
+	}
+}
