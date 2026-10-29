@@ -279,16 +279,26 @@ Re-render reports from existing trace files without re-running models:
   --md-table ./results/table.md
 ```
 
-#### Diagnostic logging during TUI runs
-During interactive TUI benchmarks, standard logs are discarded so the Bubble Tea terminal display is not corrupted. Set the `CAN_I_COMPRESS_IT_LOG` environment variable to record full runtime execution details and model warnings:
+#### Diagnostic logging and environment overrides during TUI runs
+During interactive TUI benchmarks, standard logs are discarded so the Bubble Tea terminal display is not corrupted. Set the `CAN_I_COMPRESS_IT_LOG` environment variable to record full runtime execution details and model warnings.
+
+You can also pre-populate provider inputs or immediately launch full factorial matrix execution (`CAN_I_COMPRESS_IT_AUTORUN=1`) using environment variables:
 
 ```bash
 # macOS / Linux
 export CAN_I_COMPRESS_IT_LOG="./runner.log"
+export CAN_I_COMPRESS_IT_MODEL="qwen2.5-7b-instruct"
+export CAN_I_COMPRESS_IT_ENDPOINT="http://localhost:1234/v1"
+export CAN_I_COMPRESS_IT_PARAMS_B="7.0"
+export CAN_I_COMPRESS_IT_AUTORUN="1" # Launches matrix immediately into Step 4
 ./can-i-compress-it tui
 
 # Windows PowerShell
 $env:CAN_I_COMPRESS_IT_LOG = ".\runner.log"
+$env:CAN_I_COMPRESS_IT_MODEL = "qwen2.5-7b-instruct"
+$env:CAN_I_COMPRESS_IT_ENDPOINT = "http://localhost:1234/v1"
+$env:CAN_I_COMPRESS_IT_PARAMS_B = "7.0"
+$env:CAN_I_COMPRESS_IT_AUTORUN = "1"
 .\can-i-compress-it.exe tui
 ```
 
