@@ -14,6 +14,7 @@ This guide covers setup, execution modes, MCP schema handling, multi-model evalu
   - [6. Working with bundled and custom MCP suites](#6-working-with-bundled-and-custom-mcp-suites)
   - [7. Multi-model analysis and scaling regressions](#7-multi-model-analysis-and-scaling-regressions)
   - [8. Output file management and multi-trace workflows](#8-output-file-management-and-multi-trace-workflows)
+  - [9. Windows Lab Assistant Guide (Turnkey & LM Studio)](#9-windows-lab-assistant-guide-turnkey--lm-studio)
 - [Bundled popular MCP tool suites](#bundled-popular-mcp-tool-suites)
 - [Compression levels](#compression-levels)
 - [Evaluation metrics and scoring](#evaluation-metrics-and-scoring)
@@ -56,11 +57,16 @@ Requirements: Go 1.27 or newer.
 git clone git@github.com:ARYAN-04/compression-quality-checker.git
 cd compression-quality-checker
 
-# Build standalone binary
+# Build standalone binary (macOS / Linux)
 go build -o can-i-compress-it ./cmd/can-i-compress-it
-
-# Verify installation
 ./can-i-compress-it --help
+
+# Build standalone binary (Windows PowerShell or CMD)
+go build -o can-i-compress-it.exe .\cmd\can-i-compress-it
+.\can-i-compress-it.exe --help
+
+# Cross-compile Windows binary from macOS/Linux for lab distribution
+GOOS=windows GOARCH=amd64 go build -o can-i-compress-it.exe ./cmd/can-i-compress-it
 ```
 
 ---
@@ -87,26 +93,37 @@ Pass `--mock` in CLI commands or select the **Offline Mock** preset in the TUI t
 
 ### 3. Running a smoke test
 
-Run an isolated tool call to verify connection, response format, and latency:
+Run an isolated tool call to verify connection, response format, real latency, and schema handling:
 
 ```bash
-# Test against LM Studio
+# Test against LM Studio with embedded GitHub schema (default)
 ./can-i-compress-it test \
   --endpoint http://localhost:1234/v1 \
   --model qwen2.5-7b-instruct \
   --prompt "Get issue 42 in repo torvalds/linux" \
+  --schema github \
   --level none
 
-# Test against Ollama with medium compression
+# Test against Ollama with medium compression on PostgreSQL tools
 ./can-i-compress-it test \
   --endpoint http://localhost:11434/v1 \
   --model llama3.1:8b \
-  --prompt "Search for issues matching payment retry" \
+  --prompt "List all database tables in public schema" \
+  --schema postgres \
   --level medium
+
+# Test two-stage meta-tool planning at max compression (get_tool_schema -> invoke_tool)
+./can-i-compress-it test \
+  --endpoint http://localhost:1234/v1 \
+  --model qwen2.5-7b-instruct \
+  --prompt "Get issue 42 in repo torvalds/linux" \
+  --level max
 
 # Test against offline mock
 ./can-i-compress-it test --mock -m mock-model -p "Get issue 42"
 ```
+
+The `--schema` flag accepts bundled schemas (`github`, `jira`, `slack`, `sqlite`, `filesystem`, `postgres`, `memory`, `fetch`, `brave-search`, `puppeteer`, `git`, or `all`) as well as file paths to custom schema JSON files. You can also specify `--suite <path.json>` to load tools from a task suite.
 
 Expected output:
 ```text
@@ -262,6 +279,67 @@ Re-render reports from existing trace files without re-running models:
   --md-table ./results/table.md
 ```
 
+#### Diagnostic logging during TUI runs
+During interactive TUI benchmarks, standard logs are discarded so the Bubble Tea terminal display is not corrupted. Set the `CAN_I_COMPRESS_IT_LOG` environment variable to record full runtime execution details and model warnings:
+
+```bash
+# macOS / Linux
+export CAN_I_COMPRESS_IT_LOG="./runner.log"
+./can-i-compress-it tui
+
+# Windows PowerShell
+$env:CAN_I_COMPRESS_IT_LOG = ".\runner.log"
+.\can-i-compress-it.exe tui
+```
+
+---
+
+### 9. Windows Lab Assistant Guide (Turnkey & LM Studio)
+
+This walkthrough is designed for lab assistants running benchmarks on Windows test machines without needing deep knowledge of the harness internals.
+
+#### Step 1: Start LM Studio
+1. Launch **LM Studio** on the Windows machine.
+2. Under the **Developer** tab (left sidebar), click **Load Model** and select the designated evaluation model (e.g. `Qwen2.5-7B-Instruct`).
+3. Click the green **Start Server** button. Ensure the port is `1234` (the default `http://localhost:1234/v1`).
+4. Keep LM Studio running in the background.
+
+#### Step 2: Run the automated turnkey script
+A pre-configured Windows script is provided in `scripts\run_windows.bat`.
+
+1. Double-click **`scripts\run_windows.bat`** (or execute in Command Prompt / PowerShell: `.\scripts\run_windows.bat`).
+2. The script automatically:
+   - Verifies or compiles `can-i-compress-it.exe`.
+   - Runs a smoke test to confirm LM Studio is responding.
+   - Executes the 150-cell benchmark sweep across all 5 compression levels (`none`, `low`, `medium`, `high`, `max`).
+   - Automatically opens the resulting interactive HTML report in your web browser (Edge/Chrome).
+3. To test a different model name or remote machine IP, pass them as arguments:
+   ```cmd
+   .\scripts\run_windows.bat llama-3.1-8b-instruct http://127.0.0.1:1234/v1
+   ```
+
+#### Step 3: Run via the interactive TUI wizard
+If preferred, launch the full-screen terminal wizard:
+```powershell
+.\can-i-compress-it.exe tui
+```
+- On **Step 1**, verify your model name and press **`[F]`** to immediately trigger the full 150-cell benchmark.
+- Once finished, press **`[O]`** to open the HTML report in your browser.
+
+#### Step 4: Run headlessly via PowerShell
+For automated or scripted sweeps:
+```powershell
+.\can-i-compress-it.exe run `
+  --endpoint http://localhost:1234/v1 `
+  --model qwen2.5-7b-instruct `
+  --levels none,low,medium,high,max `
+  --output .\results\qwen_results.json `
+  --html-report .\results\qwen_report.html `
+  --md-table .\results\qwen_table.md
+```
+
+All results are saved in the `results\` folder. Lab assistants can simply copy the generated `.html` and `.json` files to submit evaluation results.
+
 ---
 
 ## Bundled popular MCP tool suites
@@ -312,7 +390,7 @@ The binary includes 11 static schema templates:
 |---|---|---|
 | `can-i-compress-it tui` | Full-screen interactive wizard | (none) |
 | `can-i-compress-it run` | Headless matrix benchmark | `--model`, `--endpoint`, `--levels`, `--params-b`, `--compressor`, `--suite`, `--output`, `--html-report`, `--md-table`, `--mock` |
-| `can-i-compress-it test` | Single tool verification probe | `-m, --model`, `-p, --prompt`, `--endpoint`, `--level`, `--compressor`, `--mock` |
+| `can-i-compress-it test` | Single tool verification probe | `-m, --model`, `-p, --prompt`, `--endpoint`, `--level`, `--schema`, `--suite`, `--compressor`, `--mock` |
 | `can-i-compress-it suite generate` | Create synthetic benchmark suites | `-n, --num-tasks`, `--ambiguity`, `--prompt-style`, `--distractors`, `--from-schema`, `--seed`, `-o, --output` |
 | `can-i-compress-it suite import` | Ingest tools from schema files or live MCP processes | `--template`, `--from-schema`, `-o, --output`, `-- <cmd>` |
 | `can-i-compress-it analyze` | Multi-model bootstrap and regression analysis | `-i, --inputs`, `--bootstrap-iterations`, `--output-table`, `--output-json` |

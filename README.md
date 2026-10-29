@@ -29,10 +29,14 @@ It runs a **factorial evaluation matrix** (tasks &times; compression levels) aga
 Requires Go 1.27 or newer:
 
 ```bash
-git clone git@github.com:ARYAN-04/compression-quality-checker.git
-cd compression-quality-checker
+# macOS / Linux:
 go build -o can-i-compress-it ./cmd/can-i-compress-it
+
+# Windows (PowerShell or CMD):
+go build -o can-i-compress-it.exe .\cmd\can-i-compress-it
 ```
+
+> **Windows Lab Assistants:** You can double-click **`scripts\run_windows.bat`** to run a fully automated smoke test and 150-cell matrix sweep against LM Studio with zero command-line setup. See the [Windows Lab Guide](docs.md#9-windows-lab-assistant-guide-turnkey--lm-studio) for step-by-step instructions.
 
 ### 2. Run a smoke test
 
@@ -94,6 +98,7 @@ For comprehensive guides, setup details, and advanced workflows, see **[docs.md]
 - [Working with bundled offline MCP server suites](docs.md#6-working-with-bundled-and-custom-mcp-suites)
 - [Cross-model comparison and scaling regressions](docs.md#7-multi-model-analysis-and-scaling-regressions)
 - [Output file management and multi-trace workflows](docs.md#8-output-file-management-and-multi-trace-workflows)
+- [Windows Lab Assistant Guide (Turnkey & LM Studio)](docs.md#9-windows-lab-assistant-guide-turnkey--lm-studio)
 - [Complete CLI command and flag reference](docs.md#command-reference)
 
 ---
